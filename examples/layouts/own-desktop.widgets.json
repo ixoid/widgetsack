@@ -96,7 +96,7 @@
             "config": {
               "decimals": 2,
               "invertColors": false,
-              "label": "",
+              "label": "BTC / USD",
               "showSparkline": true,
               "symbol": "BTC-USD"
             },
@@ -124,6 +124,84 @@
               "y": 480
             },
             "type": "disks"
+          }
+        },
+        {
+          "id": "servercheck-main",
+          "unit": {
+            "config": {
+              "title": "Servers",
+              "maxRows": 8,
+              "showSparkline": true,
+              "slowMs": 150
+            },
+            "id": "servercheck-main",
+            "rect": {
+              "h": 140,
+              "w": 328,
+              "x": 24,
+              "y": 570
+            },
+            "type": "servercheck"
+          }
+        },
+        {
+          "id": "agendaplus-main",
+          "unit": {
+            "config": {
+              "title": "Agenda+",
+              "maxRows": 8,
+              "showCountdown": true,
+              "showLater": false
+            },
+            "id": "agendaplus-main",
+            "rect": {
+              "h": 440,
+              "w": 640,
+              "x": 1380,
+              "y": 248
+            },
+            "type": "agendaplus"
+          }
+        },
+        {
+          "id": "ticker-usdrub",
+          "unit": {
+            "config": {
+              "decimals": 2,
+              "invertColors": false,
+              "label": "USD / RUB",
+              "showSparkline": true,
+              "symbol": "USDRUB=X"
+            },
+            "id": "ticker-usdrub",
+            "rect": {
+              "h": 110,
+              "w": 180,
+              "x": 1904,
+              "y": 560
+            },
+            "type": "ticker"
+          }
+        },
+        {
+          "id": "ticker-eurrub",
+          "unit": {
+            "config": {
+              "decimals": 2,
+              "invertColors": false,
+              "label": "EUR / RUB",
+              "showSparkline": true,
+              "symbol": "EURRUB=X"
+            },
+            "id": "ticker-eurrub",
+            "rect": {
+              "h": 110,
+              "w": 180,
+              "x": 2300,
+              "y": 560
+            },
+            "type": "ticker"
           }
         }
       ],
