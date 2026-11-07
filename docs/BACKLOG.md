@@ -43,6 +43,28 @@ or it is blind.
 
 ## LOW / Cosmetic
 
+### [qa] HWiNFO per-core clocks exist only on the shared-memory path
+- **Severity:** LOW
+- **File:** `widgetsack/src/fork/hwinfo/model.rs` (`core_clocks`), `client/src/lib/widgets/fork/hwinfo/HwinfoSettings.tsx` (warning text)
+- **Found by:** qa-reviewer (lane H-1)
+- **Feature:** H-1 HWiNFO sensors
+- **Date:** 2026-11-07
+- **Status:** open
+- **Description:** `hw.cpu.clock.core.N` is derived from `Core N T0 Effective Clock` labels, which the gadget/VSB registry only carries if the owner ticks each core in HWiNFO; then they surface as `hw.<slug>` but the well-known per-core ids stay absent. The pane says so in a warning line; nothing hints at it when such readings are ticked.
+- **Fix:** in `HwinfoSettings`, when a ticked reading's label matches the per-core pattern, show a one-line hint that `hw.cpu.clock.core.N` needs shared memory; or let `well_known_samples` also map gadget per-core labels (it already does — verify with a live gadget set that includes `Core 0 T0 Effective Clock`).
+- **Check:** `cd widgetsack && cargo test fork::hwinfo::model::tests::core_clock_labels_are_classified` passes; live: tick `Core 0 T0 Effective Clock` in HWiNFO's gadget list → overlay Text bound to `hw.cpu.clock.core.0` shows a value.
+
+### [qa] `hw.cpu.clock.max` differs by interface (HWiNFO aggregate vs max of effective cores)
+- **Severity:** LOW
+- **File:** `widgetsack/src/fork/hwinfo/model.rs` (`well_known_samples`), `docs/decisions/002-hwinfo-sensor-source.md`
+- **Found by:** qa-reviewer (lane H-1)
+- **Feature:** H-1 HWiNFO sensors
+- **Date:** 2026-11-07
+- **Status:** open
+- **Description:** on the registry path the id carries HWiNFO's own `Core Clocks` aggregate; on the shared-memory path it is the max over per-core effective clocks. Both are "the fastest core right now" in spirit but can differ by a few hundred MHz.
+- **Fix:** note in ADR-002 Consequences (done) and in README-fork (P-1); no code change unless the owner prefers one definition.
+- **Check:** none — documentation wording.
+
 ### [qa] met.no day highs/lows for days 3-6 use 6-hourly instants
 - **Severity:** LOW
 - **File:** `widgetsack/src/fork/weather_metno.rs:381`
