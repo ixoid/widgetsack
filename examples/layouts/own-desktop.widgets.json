@@ -9,9 +9,17 @@
     "default": {
       "root": {
         "id": "root",
+        "kind": "col",
+        "children": []
+      },
+      "floating": []
+    },
+    "CRXED00-UID516": {
+      "root": {
+        "id": "root",
         "kind": "row",
-        "pad": 32,
-        "gap": 32,
+        "pad": 20,
+        "gap": 24,
         "align": "start",
         "justify": "between",
         "children": [
@@ -28,7 +36,10 @@
                   "id": "card-weather",
                   "kind": "group",
                   "name": "Weather",
-                  "size": { "w": 440, "h": 300 },
+                  "size": {
+                    "w": 440,
+                    "h": 280
+                  },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-weather-root",
@@ -38,12 +49,21 @@
                     "children": [
                       {
                         "id": "weather-slot",
-                        "basis": 268,
+                        "basis": 248,
                         "unit": {
                           "id": "weather",
                           "type": "weather",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 268 },
-                          "config": { "showHiLo": true, "showDetail": true, "forecastDays": 5 }
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 248
+                          },
+                          "config": {
+                            "showHiLo": true,
+                            "showDetail": true,
+                            "forecastDays": 5
+                          }
                         }
                       }
                     ]
@@ -56,7 +76,10 @@
                   "id": "card-system",
                   "kind": "group",
                   "name": "Uptime & network",
-                  "size": { "w": 440, "h": 196 },
+                  "size": {
+                    "w": 440,
+                    "h": 196
+                  },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-system-root",
@@ -71,8 +94,16 @@
                           "id": "uptime",
                           "type": "text",
                           "sensor": "host.uptime",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 22 },
-                          "config": { "label": "Uptime", "format": "duration" }
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 22
+                          },
+                          "config": {
+                            "label": "Uptime",
+                            "format": "duration"
+                          }
                         }
                       },
                       {
@@ -82,7 +113,12 @@
                           "id": "net-down",
                           "type": "text",
                           "sensor": "net.down",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 28 },
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 28
+                          },
                           "config": {
                             "label": "↓ Download",
                             "format": "rate",
@@ -99,7 +135,12 @@
                           "id": "net-up",
                           "type": "text",
                           "sensor": "net.up",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 28 },
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 28
+                          },
                           "config": {
                             "label": "↑ Upload",
                             "format": "rate",
@@ -116,7 +157,12 @@
                           "id": "net-totals",
                           "type": "text",
                           "sensor": "net.down.total",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 20 },
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 20
+                          },
                           "config": {
                             "label": "",
                             "value": "Received {bytes(net.down.total)} · Sent {bytes(net.up.total)}"
@@ -131,7 +177,12 @@
                           "id": "net-adapter",
                           "type": "text",
                           "sensor": "net.linkspeed.rx",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 20 },
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 20
+                          },
                           "config": {
                             "label": "",
                             "value": "{net.adapter} · link {rate(net.linkspeed.rx / 8)}"
@@ -148,19 +199,28 @@
           {
             "id": "col-center",
             "kind": "col",
-            "basis": { "fr": 1 },
-            "gap": 16,
+            "basis": {
+              "fr": 1
+            },
+            "gap": 12,
             "align": "stretch",
             "children": [
               {
                 "id": "clock-time-slot",
-                "basis": 150,
+                "basis": 140,
                 "halign": "center",
                 "unit": {
                   "id": "clock-time",
                   "type": "clock",
-                  "rect": { "x": 0, "y": 0, "w": 420, "h": 150 },
-                  "config": { "format": "HH:mm" },
+                  "rect": {
+                    "x": 0,
+                    "y": 0,
+                    "w": 420,
+                    "h": 140
+                  },
+                  "config": {
+                    "format": "HH:mm"
+                  },
                   "css": "text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45); .value { font-size: 136px; line-height: 1; font-weight: 300; letter-spacing: -0.02em; }"
                 }
               },
@@ -171,15 +231,23 @@
                 "unit": {
                   "id": "clock-date",
                   "type": "clock",
-                  "rect": { "x": 0, "y": 0, "w": 520, "h": 40 },
-                  "config": { "format": "dddd, MMMM D", "locale": "en" },
+                  "rect": {
+                    "x": 0,
+                    "y": 0,
+                    "w": 520,
+                    "h": 40
+                  },
+                  "config": {
+                    "format": "dddd, MMMM D",
+                    "locale": "en"
+                  },
                   "css": "text-shadow: 0 2px 16px rgba(0, 0, 0, 0.45); .value { font-size: 34px; line-height: 1.1; font-weight: 300; }"
                 }
               },
               {
                 "id": "agenda-row",
                 "kind": "row",
-                "basis": 280,
+                "basis": 260,
                 "justify": "center",
                 "align": "start",
                 "children": [
@@ -190,9 +258,14 @@
                       "id": "card-agenda",
                       "kind": "group",
                       "name": "Upcoming events",
-                      "size": { "w": 560, "h": 280 },
+                      "size": {
+                        "w": 560,
+                        "h": 260
+                      },
                       "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.66); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
-                      "tokens": { "--np-accent": "#7cc4ff" },
+                      "tokens": {
+                        "--np-accent": "#7cc4ff"
+                      },
                       "child": {
                         "id": "card-agenda-root",
                         "kind": "col",
@@ -201,12 +274,20 @@
                         "children": [
                           {
                             "id": "agenda-slot",
-                            "basis": 248,
+                            "basis": 228,
                             "unit": {
                               "id": "agenda",
                               "type": "agenda",
-                              "rect": { "x": 0, "y": 0, "w": 528, "h": 248 },
-                              "config": { "title": "Upcoming events", "maxRows": 5 }
+                              "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 528,
+                                "h": 228
+                              },
+                              "config": {
+                                "title": "Upcoming events",
+                                "maxRows": 5
+                              }
                             }
                           }
                         ]
@@ -230,7 +311,10 @@
                   "id": "card-gpu",
                   "kind": "group",
                   "name": "GPU",
-                  "size": { "w": 440, "h": 300 },
+                  "size": {
+                    "w": 440,
+                    "h": 260
+                  },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-gpu-root",
@@ -240,12 +324,19 @@
                     "children": [
                       {
                         "id": "gpu-slot",
-                        "basis": 150,
+                        "basis": 120,
                         "unit": {
                           "id": "gpu",
                           "type": "gpu",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 150 },
-                          "config": { "showName": true }
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 120
+                          },
+                          "config": {
+                            "showName": true
+                          }
                         }
                       },
                       {
@@ -262,8 +353,20 @@
                               "id": "gpu-load",
                               "type": "gauge",
                               "sensor": "gpu.util",
-                              "rect": { "x": 0, "y": 0, "w": 100, "h": 100 },
-                              "config": { "label": "Load", "unit": "%", "min": 0, "max": 100, "style": "arc", "sweep": 270 }
+                              "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 100,
+                                "h": 100
+                              },
+                              "config": {
+                                "label": "Load",
+                                "unit": "%",
+                                "min": 0,
+                                "max": 100,
+                                "style": "arc",
+                                "sweep": 270
+                              }
                             }
                           },
                           {
@@ -273,8 +376,20 @@
                               "id": "gpu-temp",
                               "type": "gauge",
                               "sensor": "gpu.temp",
-                              "rect": { "x": 0, "y": 0, "w": 100, "h": 100 },
-                              "config": { "label": "Temp", "unit": "°C", "min": 0, "max": 100, "style": "arc", "sweep": 270 }
+                              "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 100,
+                                "h": 100
+                              },
+                              "config": {
+                                "label": "Temp",
+                                "unit": "°C",
+                                "min": 0,
+                                "max": 100,
+                                "style": "arc",
+                                "sweep": 270
+                              }
                             }
                           },
                           {
@@ -284,8 +399,20 @@
                               "id": "gpu-clock",
                               "type": "gauge",
                               "sensor": "gpu.clock.core",
-                              "rect": { "x": 0, "y": 0, "w": 100, "h": 100 },
-                              "config": { "label": "MHz", "unit": "", "min": 0, "max": 3200, "style": "arc", "sweep": 270 }
+                              "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 100,
+                                "h": 100
+                              },
+                              "config": {
+                                "label": "MHz",
+                                "unit": "",
+                                "min": 0,
+                                "max": 3200,
+                                "style": "arc",
+                                "sweep": 270
+                              }
                             }
                           }
                         ]
@@ -300,7 +427,10 @@
                   "id": "card-cpu",
                   "kind": "group",
                   "name": "CPU & RAM",
-                  "size": { "w": 440, "h": 192 },
+                  "size": {
+                    "w": 440,
+                    "h": 180
+                  },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-cpu-root",
@@ -315,8 +445,16 @@
                           "id": "cpu-name",
                           "type": "text",
                           "sensor": "cpu.total",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 22 },
-                          "config": { "label": "", "value": "{cpu.brand}" },
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 22
+                          },
+                          "config": {
+                            "label": "",
+                            "value": "{cpu.brand}"
+                          },
                           "css": "font-size: var(--np-text-heading); font-weight: 600;"
                         }
                       },
@@ -334,8 +472,20 @@
                               "id": "cpu-load",
                               "type": "gauge",
                               "sensor": "cpu.total",
-                              "rect": { "x": 0, "y": 0, "w": 100, "h": 100 },
-                              "config": { "label": "Load", "unit": "%", "min": 0, "max": 100, "style": "arc", "sweep": 270 }
+                              "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 100,
+                                "h": 100
+                              },
+                              "config": {
+                                "label": "Load",
+                                "unit": "%",
+                                "min": 0,
+                                "max": 100,
+                                "style": "arc",
+                                "sweep": 270
+                              }
                             }
                           },
                           {
@@ -345,8 +495,20 @@
                               "id": "cpu-clock",
                               "type": "gauge",
                               "sensor": "cpu.freq.current",
-                              "rect": { "x": 0, "y": 0, "w": 100, "h": 100 },
-                              "config": { "label": "MHz", "unit": "", "min": 0, "max": 5800, "style": "arc", "sweep": 270 }
+                              "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 100,
+                                "h": 100
+                              },
+                              "config": {
+                                "label": "MHz",
+                                "unit": "",
+                                "min": 0,
+                                "max": 5800,
+                                "style": "arc",
+                                "sweep": 270
+                              }
                             }
                           },
                           {
@@ -356,8 +518,20 @@
                               "id": "ram",
                               "type": "gauge",
                               "sensor": "mem.used",
-                              "rect": { "x": 0, "y": 0, "w": 100, "h": 100 },
-                              "config": { "label": "RAM", "unit": "%", "min": 0, "max": 100, "style": "arc", "sweep": 270 }
+                              "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 100,
+                                "h": 100
+                              },
+                              "config": {
+                                "label": "RAM",
+                                "unit": "%",
+                                "min": 0,
+                                "max": 100,
+                                "style": "arc",
+                                "sweep": 270
+                              }
                             }
                           }
                         ]
@@ -372,7 +546,10 @@
                   "id": "card-history",
                   "kind": "group",
                   "name": "Load history",
-                  "size": { "w": 440, "h": 172 },
+                  "size": {
+                    "w": 440,
+                    "h": 150
+                  },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-history-root",
@@ -382,11 +559,16 @@
                     "children": [
                       {
                         "id": "history-slot",
-                        "basis": 140,
+                        "basis": 118,
                         "unit": {
                           "id": "history",
                           "type": "history",
-                          "rect": { "x": 0, "y": 0, "w": 408, "h": 140 },
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 118
+                          },
                           "config": {
                             "label": "CPU / GPU · 2 min",
                             "sensorIds": "cpu.total,gpu.util",
