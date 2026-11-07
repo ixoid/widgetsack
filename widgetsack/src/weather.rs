@@ -21,7 +21,7 @@ use crate::sensors::{ActiveSensors, SensorSample, TELEMETRY_EVENT};
 
 /// Poll cadence guardrails (seconds). Weather changes slowly, so the floor is generous.
 const MIN_INTERVAL: u64 = 300; // 5 min — Open-Meteo updates ~every 15 min; don't hammer it
-const MAX_INTERVAL: u64 = 21_600; // 6 h
+pub(crate) const MAX_INTERVAL: u64 = 21_600; // 6 h
 /// While no `weather.*` widget is mounted we don't fetch; re-check the demand gate this often.
 const IDLE_RECHECK: Duration = Duration::from_secs(5);
 
@@ -43,6 +43,12 @@ pub(crate) fn normalize_provider(s: &str) -> &'static str {
     } else {
         "open-meteo"
     }
+}
+
+/// The provider to persist on save: an explicit value wins, an absent one (callers that do not know
+/// the field, e.g. the LLM/MCP integration tool) keeps what is already stored. Pure.
+fn resolve_provider(arg: Option<&str>, stored: &str) -> &'static str {
+    normalize_provider(arg.unwrap_or(stored))
 }
 
 /// Whether the provider has a separate air-quality endpoint (Open-Meteo only). Pure.
@@ -404,9 +410,7 @@ pub async fn run_weather_client<R: Runtime>(app: AppHandle<R>, cfg: WeatherConfi
                 .min(Duration::from_secs(MAX_INTERVAL))
         };
         // met.no's `Expires` is a floor on the next poll (never shorter than the configured wait).
-        let wait = wait
-            .max(fresh_for.unwrap_or_default())
-            .min(Duration::from_secs(MAX_INTERVAL));
+        let wait = crate::fork::weather_metno::next_wait(wait, fresh_for);
         tokio::time::sleep(wait).await;
     }
 }
@@ -432,6 +436,12 @@ pub async fn save_weather_config(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    // An unreadable stored file must not block a save: it just has nothing to keep.
+    let stored = load_weather_config(&app)
+        .ok()
+        .flatten()
+        .map(|c| c.provider)
+        .unwrap_or_default();
     let cfg = WeatherConfig {
         latitude,
         longitude,
@@ -441,7 +451,7 @@ pub async fn save_weather_config(
             unit
         },
         poll_interval_secs: poll_seconds.clamp(MIN_INTERVAL, MAX_INTERVAL),
-        provider: normalize_provider(provider.as_deref().unwrap_or("")).to_string(),
+        provider: resolve_provider(provider.as_deref(), &stored).to_string(),
     };
     let txt = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
     crate::file_io::atomic_write(&path, &txt)
@@ -731,6 +741,24 @@ mod tests {
         assert_eq!(normalize_provider("open-meteo"), "open-meteo");
         assert_eq!(normalize_provider(""), "open-meteo");
         assert_eq!(normalize_provider("metno"), "open-meteo");
+    }
+
+    #[test]
+    fn save_keeps_provider_when_absent() {
+        // A stored met-no config, as read back from plugins/weather.json.
+        let stored: WeatherConfig =
+            serde_json::from_str(r#"{ "latitude": 1.0, "provider": "met-no" }"#).unwrap();
+        assert_eq!(resolve_provider(None, &stored.provider), "met-no");
+        // Only an explicit value changes it.
+        assert_eq!(
+            resolve_provider(Some("open-meteo"), &stored.provider),
+            "open-meteo"
+        );
+        assert_eq!(resolve_provider(Some(" MET-NO "), "open-meteo"), "met-no");
+        assert_eq!(resolve_provider(Some("banana"), "met-no"), "open-meteo");
+        // Nothing stored (or junk): the default.
+        assert_eq!(resolve_provider(None, ""), "open-meteo");
+        assert_eq!(resolve_provider(None, "banana"), "open-meteo");
     }
 
     #[test]

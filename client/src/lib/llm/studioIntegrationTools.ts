@@ -80,7 +80,8 @@ export const INTEGRATIONS: Integration[] = [
 			latitude: { type: 'number', minimum: -90, maximum: 90 },
 			longitude: { type: 'number', minimum: -180, maximum: 180 },
 			unit: { type: 'string', enum: ['C', 'F'] },
-			pollSeconds: polling
+			pollSeconds: polling,
+			provider: { type: 'string', enum: ['open-meteo', 'met-no'] }
 		}
 	},
 	{

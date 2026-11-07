@@ -43,7 +43,14 @@ const statuses: Record<string, Record<string, unknown>> = {
 		discovery: true
 	},
 	stocks: { configured: true, provider: 'yahoo', symbols: ['NVDA'], pollSeconds: 60 },
-	weather: { configured: true, latitude: 1, longitude: 103, unit: 'C', pollSeconds: 1800 },
+	weather: {
+		configured: true,
+		latitude: 1,
+		longitude: 103,
+		unit: 'C',
+		pollSeconds: 1800,
+		provider: 'met-no'
+	},
 	rss: {
 		configured: true,
 		url: 'https://feed.example/rss',
@@ -105,12 +112,33 @@ it.each(INTEGRATIONS)(
 				maxTokens: 1000,
 				agentControl: false
 			});
+		if (integration.id === 'weather')
+			expect(args).toMatchObject({ latitude: 1, unit: 'C', provider: 'met-no' });
 		if (integration.id === 'mqtt')
 			expect(args).toMatchObject({ clientId: 'personal-client', topics: ['home/#'], tls: true });
 		if (integration.connect)
 			expect(call).toHaveBeenCalledWith(integration.connect, { restart: true });
 	}
 );
+it('forwards the stored weather provider on a partial edit, and lets an explicit one win', async () => {
+	const { tool, call } = setup();
+	await tool('studio_configure_integration', { integration: 'weather', settings: { latitude: 2 } });
+	expect(call).toHaveBeenCalledWith(
+		'save_weather_config',
+		expect.objectContaining({ latitude: 2, provider: 'met-no' })
+	);
+	await tool('studio_configure_integration', {
+		integration: 'weather',
+		settings: { provider: 'open-meteo' }
+	});
+	expect(call).toHaveBeenCalledWith(
+		'save_weather_config',
+		expect.objectContaining({ provider: 'open-meteo' })
+	);
+	expect(() =>
+		decodeIntegrationRequest({ integration: 'weather', settings: { provider: 'banana' } })
+	).toThrow('Invalid setting: provider');
+});
 it('tests proposed settings without saving, and gives safe failures', async () => {
 	const { tool, call } = setup();
 	expect(

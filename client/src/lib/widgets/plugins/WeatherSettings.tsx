@@ -1,8 +1,9 @@
 import { useSettingsOperations } from './useSettingsOperations';
 // The Weather plugin's settings pane (studio → Plugins → Weather). A container (AGENTS.md §6): owns
-// the form state, drives the Tauri commands via weather-commands.ts. Both providers (Open-Meteo, MET
-// Norway) are keyless, so this is just a location + units + refresh + provider form. The live badge reads the `weather.status` telemetry sample
-// through the hub, the same path meters use. Reuses the shared `has-*` settings styling.
+// the form state, drives the Tauri commands via weather-commands.ts. Both providers (Open-Meteo,
+// MET Norway) are keyless, so this is just a location + units + refresh + provider form. The live
+// badge reads the `weather.status` telemetry sample through the hub, the same path meters use.
+// Reuses the shared `has-*` settings styling.
 import { useEffect, useState } from 'react';
 import { useTelemetryHub } from '../telemetryContext';
 import { useSensor } from '../useSensor';

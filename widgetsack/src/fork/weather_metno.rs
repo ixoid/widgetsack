@@ -49,10 +49,23 @@ fn coord(v: f64, limit: f64) -> String {
     }
 }
 
+/// Redirect rule: follow only `https` hops to `api.met.no`, at most 3, so the coordinate-bearing URL
+/// never leaves the provider or drops to plain http. Pure seam over the hop's URL and hop count.
+fn follow_redirect(url: &reqwest::Url, hops: usize) -> bool {
+    url.scheme() == "https" && url.host_str() == Some("api.met.no") && hops < 3
+}
+
 /// A client that identifies itself (met.no ToS) with a 10 s timeout.
 pub fn metno_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if follow_redirect(attempt.url(), attempt.previous().len()) {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        }))
         .user_agent(USER_AGENT)
         .build()
         .map_err(|e| e.to_string())
@@ -115,7 +128,9 @@ fn epoch_from_parts(y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64) -> Option<
     if !(1..=12).contains(&mo) || d < 1 || d > days_in_month(y, mo) || h > 23 || mi > 59 || s > 59 {
         return None;
     }
-    Some(days_from_civil(y, mo, d) * 86_400 + h * 3600 + mi * 60 + s)
+    days_from_civil(y, mo, d)
+        .checked_mul(86_400)?
+        .checked_add(h * 3600 + mi * 60 + s)
 }
 
 /// `YYYY-MM-DDTHH:MM:SSZ` -> epoch seconds. Anything else (offsets, fractions, garbage) -> None.
@@ -157,7 +172,12 @@ fn parse_http_date(s: &str) -> Option<i64> {
     .iter()
     .position(|m| *m == name)? as i64
         + 1;
-    let year = num(it.next()?)?;
+    // Exactly 4 digits: an unbounded year would overflow the epoch arithmetic.
+    let year_str = it.next()?;
+    if year_str.len() != 4 {
+        return None;
+    }
+    let year = num(year_str)?;
     let time = it.next()?;
     if it.next()? != "GMT" || it.next().is_some() {
         return None;
@@ -173,11 +193,19 @@ fn parse_http_date(s: &str) -> Option<i64> {
 /// How long the response stays fresh: `Expires` minus `Date`. None if either is missing,
 /// unparseable, or the difference is not positive.
 fn fresh_for(expires: Option<&str>, date: Option<&str>) -> Option<Duration> {
-    let diff = parse_http_date(expires?)? - parse_http_date(date?)?;
+    let diff = parse_http_date(expires?)?.checked_sub(parse_http_date(date?)?)?;
     u64::try_from(diff)
         .ok()
         .filter(|s| *s > 0)
         .map(Duration::from_secs)
+}
+
+/// The sleep before the next poll: never shorter than `poll_interval`, raised to met.no's
+/// `Expires` freshness when that is longer, capped at `MAX_INTERVAL`.
+pub fn next_wait(poll_interval: Duration, fresh_for: Option<Duration>) -> Duration {
+    poll_interval
+        .max(fresh_for.unwrap_or_default())
+        .min(Duration::from_secs(crate::weather::MAX_INTERVAL))
 }
 
 /// UTC offset (seconds east) from Win32 `TIME_ZONE_INFORMATION` fields: biases are minutes WEST of
@@ -863,6 +891,45 @@ mod tests {
         assert_eq!(fresh_for(None, Some(d)), None);
         assert_eq!(fresh_for(Some(d), None), None);
         assert_eq!(fresh_for(Some("nope"), Some(d)), None);
+    }
+
+    #[test]
+    fn http_date_huge_year_is_rejected_not_overflowed() {
+        let ok = "Sat, 07 Nov 2026 16:23:45 GMT";
+        // Positive control: the normal pair still works.
+        assert_eq!(
+            fresh_for(Some("Sat, 07 Nov 2026 16:53:45 GMT"), Some(ok)),
+            Some(Duration::from_secs(1800))
+        );
+        let huge = "Sat, 07 Nov 999999999999 16:53:45 GMT";
+        assert_eq!(parse_http_date(huge), None);
+        assert_eq!(fresh_for(Some(huge), Some(ok)), None);
+        assert_eq!(fresh_for(Some(ok), Some(huge)), None);
+        assert_eq!(parse_http_date("Sat, 07 Nov 20260 16:53:45 GMT"), None);
+    }
+
+    #[test]
+    fn redirect_policy_follows_only_https_api_met_no() {
+        let u = |s: &str| reqwest::Url::parse(s).unwrap();
+        assert!(follow_redirect(&u("https://api.met.no/weatherapi/x"), 0));
+        assert!(follow_redirect(&u("https://api.met.no/weatherapi/x"), 2));
+        assert!(!follow_redirect(&u("https://api.met.no/weatherapi/x"), 3));
+        assert!(!follow_redirect(&u("http://api.met.no/weatherapi/x"), 0));
+        assert!(!follow_redirect(&u("https://evil.example/x"), 0));
+        assert!(!follow_redirect(&u("https://api.met.no.evil.example/x"), 0));
+        assert!(metno_client().is_ok());
+    }
+
+    #[test]
+    fn next_wait_floors_at_interval_and_caps() {
+        let s = Duration::from_secs;
+        assert_eq!(next_wait(s(900), Some(s(1800))), s(1800));
+        assert_eq!(next_wait(s(900), Some(s(600))), s(900));
+        assert_eq!(next_wait(s(900), None), s(900));
+        assert_eq!(
+            next_wait(s(900), Some(s(1_000_000))),
+            s(crate::weather::MAX_INTERVAL)
+        );
     }
 
     #[test]
