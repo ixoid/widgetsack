@@ -18,7 +18,7 @@
       "root": {
         "id": "root",
         "kind": "row",
-        "pad": 20,
+        "pad": 16,
         "gap": 24,
         "align": "start",
         "justify": "between",
@@ -318,7 +318,7 @@
                   "name": "GPU",
                   "size": {
                     "w": 440,
-                    "h": 254
+                    "h": 276
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
@@ -329,7 +329,7 @@
                     "children": [
                       {
                         "id": "gpu-slot",
-                        "basis": 110,
+                        "basis": 132,
                         "unit": {
                           "id": "gpu",
                           "type": "gpu",
@@ -337,7 +337,7 @@
                             "x": 0,
                             "y": 0,
                             "w": 408,
-                            "h": 110
+                            "h": 132
                           },
                           "config": {
                             "showName": true
@@ -434,7 +434,7 @@
                   "name": "CPU & RAM",
                   "size": {
                     "w": 440,
-                    "h": 232
+                    "h": 236
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
@@ -519,32 +519,31 @@
                         ]
                       },
                       {
-                        "id": "ram-spark-slot",
-                        "basis": 28,
+                        "id": "ram-bar-slot",
+                        "basis": 34,
                         "unit": {
-                          "id": "ram-spark",
-                          "type": "text",
+                          "id": "ram-bar",
+                          "type": "gauge",
                           "sensor": "mem.used",
                           "rect": {
                             "x": 0,
                             "y": 0,
                             "w": 408,
-                            "h": 28
+                            "h": 34
                           },
                           "config": {
                             "label": "RAM",
-                            "format": "percent",
-                            "showSparkline": true,
-                            "sparklineStretch": true,
-                            "sparklineSeconds": 120,
-                            "sparklineScale": "percent",
-                            "sparklineSmooth": true
+                            "unit": "%",
+                            "min": 0,
+                            "max": 100,
+                            "style": "linear",
+                            "direction": "ltr"
                           }
                         }
                       },
                       {
                         "id": "ram-bytes-slot",
-                        "basis": 20,
+                        "basis": 18,
                         "unit": {
                           "id": "ram-bytes",
                           "type": "text",
@@ -553,7 +552,7 @@
                             "x": 0,
                             "y": 0,
                             "w": 408,
-                            "h": 20
+                            "h": 18
                           },
                           "config": {
                             "label": "",
@@ -574,7 +573,7 @@
                   "name": "Load history",
                   "size": {
                     "w": 440,
-                    "h": 132
+                    "h": 124
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
@@ -585,7 +584,7 @@
                     "children": [
                       {
                         "id": "history-slot",
-                        "basis": 100,
+                        "basis": 92,
                         "unit": {
                           "id": "history",
                           "type": "history",
@@ -593,15 +592,18 @@
                             "x": 0,
                             "y": 0,
                             "w": 408,
-                            "h": 100
+                            "h": 92
                           },
                           "config": {
-                            "label": "CPU / GPU / RAM · 2 min",
-                            "sensorIds": "cpu.total,gpu.util,mem.used",
+                            "label": "CPU / GPU · 2 min",
+                            "sensorIds": "cpu.total,gpu.util",
                             "seconds": 120,
                             "showThreshold": true,
                             "threshold": 90,
-                            "showStats": false
+                            "showStats": false,
+                            "fixedScale": true,
+                            "min": 0,
+                            "max": 100
                           }
                         }
                       }
