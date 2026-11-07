@@ -102,7 +102,7 @@ const BASE_ROUTE = Object.freeze({
     repro: false, clarifier: true, cpo: true, cto: true, architect: true,
     breakdown: "conditional", backend: true, uiSpec: "conditional",
     frontend: "conditional", security: true, qa: true, testWriter: true,
-    runtimeEval: true, preview: "conditional", devops: "conditional",
+    runtimeEval: "conditional", preview: "conditional", devops: "conditional",
   },
   BUG: {
     // 🔴 `repro` здесь — не первый шаг работы, а УСЛОВИЕ ВХОДА. Баг без воспроизведения это
@@ -141,6 +141,14 @@ export const SIGNAL_KEYS = /** @type {const} */ ([
   "specIsDecided",
   "hasOpenDecision", // есть развилка, которую предстоит выбрать (продуктовая или техническая)
   "changesDeploySurface", // env, зависимости, build/deploy-конфиг
+  // --- настройка форка widgetsack, решение владельца 2026-11-07 (прогон weather-metno) ---
+  // Второй круг security стоил 82k и нашёл два LOW; он включился по touchesSecurityBoundary
+  // = «новый внешний хост», хотя таймауты и лимиты тела уже стояли. Граница ДОВЕРИЯ уже: CSP,
+  // capabilities Tauri, новые IPC-команды, secure_config/секреты, дочерние процессы.
+  "touchesTrustSurface",
+  // UI-правка — поле в СУЩЕСТВУЮЩЕЙ панели (настройки/инспектор), не новый виджет или вид.
+  // UI-спека на один select стоила 46k и ничего не добавила к контракту CTO.
+  "uiIsExistingPaneField",
 ]);
 
 /**
@@ -194,12 +202,12 @@ export function applySignalOverrides(archetype, signals) {
   const conditionFor = {
     breakdown: [false, "разбивка включается только вручную, решением координатора"],
     backend: [!s.touchesVisual || s.touchesDataLayer, "есть правки вне UI"],
-    uiSpec: [s.touchesVisual && s.hasOpenDecision, "новая разметка/контрол без готового решения"],
+    uiSpec: [s.touchesVisual && s.hasOpenDecision && !s.uiIsExistingPaneField, "новая разметка/контрол без готового решения"],
     frontend: [s.touchesVisual, "есть правки CSS/TSX"],
     security: [s.touchesSecurityBoundary, "задета граница доверия"],
     architect: [s.hasOpenDecision, "есть развилка"],
     cto: [s.hasOpenDecision, "есть развилка"],
-    runtimeEval: [s.touchesVisual, "есть видимое изменение"],
+    runtimeEval: [s.touchesVisual && !s.uiIsExistingPaneField, "есть видимое изменение вне существующей панели"],
     preview: [s.touchesVisual, "правки CSS/TSX — владелец обязан увидеть «было/стало»"],
     devops: [s.changesDeploySurface, "изменилась поверхность деплоя"],
   };
@@ -217,7 +225,10 @@ export function applySignalOverrides(archetype, signals) {
   const depth = {
     // Security НИКОГДА не опускается ниже opus (правило фабрики старше этого модуля), но
     // ДВЕ итерации — только там, где цена ошибки это данные пользователя или граница доверия.
-    securityIterations: archetype === "DATA" || s.touchesSecurityBoundary ? 2 : 1,
+    // Форк 2026-11-07: две итерации только при задетой ПОВЕРХНОСТИ ДОВЕРИЯ (CSP/capabilities/IPC/
+    // секреты/дочерние процессы). Архетип DATA и новый внешний хост сами по себе дают одну —
+    // эскалация по уликам (escalate) по-прежнему может поднять до двух.
+    securityIterations: s.touchesTrustSurface ? 2 : 1,
     // Полный набор фаз тест-райтера нужен там, где регрессия может быть невидимой глазом.
     testScope: archetype === "VISUAL" && !s.touchesDataLayer ? "adapt+guard" : "full",
     // Радиус QA расширяется явным списком точек монтирования — прецедент `N-3`/`M-5`.
@@ -247,6 +258,15 @@ export function planRoute(signals) {
     signals: s,
     confident: measured === SIGNAL_KEYS.length,
     unmeasured: SIGNAL_KEYS.filter((k) => signals?.[k] === undefined),
+    // Форк 2026-11-07: clarifier + CPO + CTO схлопываются в ОДНОГО CONFIRM-агента (sonnet), когда
+    // «что делать» уже решено владельцем и это не дефект. На прогоне weather-metno три отдельных
+    // агента стоили 92k и вернули CLEAR/APPROVED/APPROVED без единого вопроса владельцу.
+    mergeGate: {
+      on: s.specIsDecided && !s.isDefectReport,
+      why: s.specIsDecided && !s.isDefectReport
+        ? "решение владельца уже есть — три гейта подтверждают, а не решают"
+        : "есть нерешённое или это дефект — гейты идут раздельно",
+    },
   };
 }
 
@@ -309,6 +329,7 @@ export function formatRoute(route) {
     "Принимаемые риски (что именно перестаёт проверяться):",
     ...off.map((step) => `  · ${step} — ${STEP_PURPOSE[step] ?? "назначение не объявлено"}`),
   ];
+  if (route.mergeGate) lines.push("", `Гейты 1–3: ${route.mergeGate.on ? "один CONFIRM-агент" : "раздельно"} — ${route.mergeGate.why}`);
   if (route.unmeasured.length) lines.push("", `Не измерено: ${route.unmeasured.join(", ")}`);
   return lines.join("\n");
 }

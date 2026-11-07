@@ -103,14 +103,15 @@ describe("состав маршрута", () => {
     }
   });
 
-  test("DATA — единственный архетип с двумя итерациями security по умолчанию", () => {
-    expect(planRoute(measured({ touchesDataLayer: true })).depth.securityIterations).toBe(2);
-    expect(planRoute(measured({ touchesVisual: true, specIsDecided: true })).depth.securityIterations).toBe(1);
-    // …но граница доверия поднимает до 2 в любом архетипе.
-    expect(
-      planRoute(measured({ touchesVisual: true, specIsDecided: true, touchesSecurityBoundary: true })).depth
-        .securityIterations,
-    ).toBe(2);
+  test("DATA сам по себе даёт ОДНУ итерацию security; две — только задетая поверхность доверия (форк 2026-11-07)", () => {
+    // До 2026-11-07 DATA автоматически давал две итерации. На прогоне weather-metno второй круг
+    // (82k) нашёл два LOW: правило снято решением владельца, остаётся эскалация по уликам.
+    const data = planRoute(measured({ touchesDataLayer: true, specIsDecided: true }));
+    expect(data.archetype).toBe("DATA");
+    expect(data.depth.securityIterations).toBe(1);
+    expect(planRoute(measured({ touchesDataLayer: true, specIsDecided: true, touchesTrustSurface: true })).depth.securityIterations).toBe(2);
+    // позитивный контроль: SPEC с поверхностью доверия тоже получает две — правило не про архетип
+    expect(planRoute(measured({ touchesTrustSurface: true })).depth.securityIterations).toBe(2);
   });
 
   test("правки CSS/TSX включают предпросмотр и рантайм-евал, их отсутствие — выключает", () => {
@@ -223,5 +224,44 @@ describe("гейт точки входа", () => {
     expect(isEntryPoint(here + ".other", url)).toBe(false);
     expect(isEntryPoint("", url)).toBe(false);
     expect(isEntryPoint(undefined as unknown as string, url)).toBe(false);
+  });
+});
+
+describe("настройка форка widgetsack — решение владельца 2026-11-07 (прогон weather-metno)", () => {
+  // Замер прогона: clarifier 28k (0 вопросов), CPO 18k (approved без изменений), UI-спека 46k
+  // (один select), security #2 82k (два LOW). ≈175k из ~730k без найденных дефектов.
+  const decided = measured({
+    touchesDataLayer: true,
+    touchesSecurityBoundary: true,
+    touchesVisual: true,
+    specIsDecided: true,
+    hasOpenDecision: true,
+  });
+
+  test("вторая итерация security — только при задетой поверхности доверия; новый внешний хост даёт одну", () => {
+    expect(planRoute({ ...decided, touchesTrustSurface: false }).depth.securityIterations).toBe(1);
+    // позитивный контроль: CSP/capabilities/IPC/секреты поднимают до двух
+    expect(planRoute({ ...decided, touchesTrustSurface: true }).depth.securityIterations).toBe(2);
+    // и улика по ходу прогона по-прежнему поднимает (эскалация не тронута)
+    const { route } = escalate(planRoute({ ...decided, touchesTrustSurface: false }), { foundSecurityBoundary: true });
+    expect(route.depth.securityIterations).toBe(2);
+  });
+
+  test("поле в существующей панели выключает UI-спеку и runtime-eval; новый виджет их возвращает", () => {
+    const pane = planRoute({ ...decided, uiIsExistingPaneField: true });
+    expect(pane.steps.uiSpec).toBe(false);
+    expect(pane.steps.runtimeEval).toBe(false);
+    expect(pane.steps.frontend).toBe(true); // фронтенд остаётся — поле всё же надо сделать
+    const widget = planRoute({ ...decided, uiIsExistingPaneField: false });
+    expect(widget.steps.uiSpec).toBe(true);
+    expect(widget.steps.runtimeEval).toBe(true);
+  });
+
+  test("гейты 1–3 схлопываются в один CONFIRM-агент, когда решение владельца есть; дефект и нерешённое — раздельно", () => {
+    expect(planRoute(decided).mergeGate.on).toBe(true);
+    expect(planRoute({ ...decided, isDefectReport: true, hasReproduction: true }).mergeGate.on).toBe(false);
+    expect(planRoute({ ...decided, specIsDecided: false }).mergeGate.on).toBe(false);
+    // и это видно владельцу в сводке
+    expect(formatRoute(planRoute(decided))).toContain("один CONFIRM-агент");
   });
 });

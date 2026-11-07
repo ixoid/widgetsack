@@ -98,6 +98,8 @@ Skills live globally and surface themselves by description — name the *capabil
 
 **Модели.** Opus — auth/секреты, CSP, security-ревью; Sonnet — механика по точной спецификации, вёрстка, тесты; Fable — координация и решения. Перед merge в `main`: security-reviewer + qa-reviewer по финальному HEAD ветки.
 
+**Маршрут форка (решение владельца 2026-11-07, `scripts/pipeline/route.mjs`, пиннится `route.test.ts`).** Координатор измеряет два дополнительных признака: `touchesTrustSurface` (CSP, capabilities, новые IPC-команды, secure_config, дочерние процессы) и `uiIsExistingPaneField` (правка — поле в существующей панели, не новый виджет). Правила: вторая итерация security только при `touchesTrustSurface`; UI-спека и runtime-eval выключены для поля в существующей панели; `mergeGate.on` → clarifier, CPO и CTO идут одним CONFIRM-агентом (sonnet), как в fast-path для роадмапа. Тест планировщика: из `client/` → `npx vitest run --root .. ../scripts/pipeline/route.test.ts`.
+
 ---
 
 ## 🔍 Code Review — Severity Tiers
