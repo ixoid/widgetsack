@@ -28,20 +28,6 @@ or it is blind.
 
 ## HIGH
 
-### [qa] Line endings of weather.rs, main.rs, Cargo.toml flipped LF to CRLF
-- **Severity:** HIGH
-- **File:** `widgetsack/src/weather.rs:1`
-- **Found by:** qa-reviewer
-- **Feature:** weather provider met.no
-- **Date:** 2026-11-07
-- **Status:** open
-- **Description:** commit dce28c7 rewrote three upstream files (and added CRLF fork files) in a repo that is LF; whole-file diffs (1392/1471/290 lines) will conflict with every upstream merge.
-- **Fix:** convert the five files to LF (sed -i 's/\r$//'), recommit.
-- **Check:** `git ls-files --eol widgetsack/src/weather.rs widgetsack/src/main.rs widgetsack/Cargo.toml widgetsack/src/fork/weather_metno.rs docs/decisions/001-weather-provider-metno.md` -> all i/lf (control: widgetsack/src/ha.rs i/lf); `git diff d86711f..HEAD --stat -- widgetsack/src/main.rs` -> 1 line.
-
-
-## MEDIUM
-
 ### [qa] Stale Open-Meteo values stay in mounted windows after switching to met.no
 - **Severity:** MEDIUM
 - **File:** `widgetsack/src/weather.rs:319`
@@ -79,6 +65,20 @@ or it is blind.
 - **Check:** `cd client && npx vitest run src/lib/widgets/meters/AiUsage.test.tsx src/lib/widgets/meters/AiUsage.compact.test.tsx` on a ru-RU machine → `Tests 19 passed (19)`; positive control: the same two assertions still fail if the formatter is forced to `ru-RU`.
 
 ## Closed
+### [qa] Line endings of weather.rs, main.rs, Cargo.toml flipped LF to CRLF
+- **Severity:** HIGH
+- **File:** `widgetsack/src/weather.rs:1`
+- **Found by:** qa-reviewer
+- **Feature:** weather provider met.no
+- **Date:** 2026-11-07
+- **Status:** closed 2026-11-07 — `git ls-files --eol widgetsack/src/main.rs widgetsack/Cargo.toml widgetsack/src/weather.rs widgetsack/src/fork/weather_metno.rs docs/decisions/001-weather-provider-metno.md` → every file `i/lf w/lf` (commit f7374ee; `.gitattributes` now pins `eol=lf`); `git diff --stat d86711f -- widgetsack/src/main.rs` → `1 +`
+- **Description:** commit dce28c7 rewrote three upstream files (and added CRLF fork files) in a repo that is LF; whole-file diffs (1392/1471/290 lines) will conflict with every upstream merge.
+- **Fix:** convert the five files to LF (sed -i 's/\r$//'), recommit.
+- **Check:** `git ls-files --eol widgetsack/src/weather.rs widgetsack/src/main.rs widgetsack/Cargo.toml widgetsack/src/fork/weather_metno.rs docs/decisions/001-weather-provider-metno.md` -> all i/lf (control: widgetsack/src/ha.rs i/lf); `git diff d86711f..HEAD --stat -- widgetsack/src/main.rs` -> 1 line.
+
+
+## MEDIUM
+
 <!-- fixed / wont-fix / stale items moved here with date + reason -->
 ### [qa] Studio integration tool save resets weather provider to open-meteo
 - **Severity:** HIGH
