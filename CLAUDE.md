@@ -81,7 +81,7 @@ Key invariants:
 
 ### Not done ❌
 - [ ] Этап 0: план этапов 1–3 согласован с владельцем (`docs/dev/fork-stage0-plan.md` § Decisions requested)
-- [ ] Этап 1: server check (`feat/server-check`)
+- [x] Этап 1: server check — в `main` (merge f53c9f5, 2026-11-07, ADR-002); осталась проверка владельцем на живом оверлее с тремя реальными целями и карточка в раскладке
 - [ ] Этап 2: camera / go2rtc (`feat/camera`)
 - [ ] Этап 3: calendar / agenda (`feat/calendar`)
 - [ ] Этап 4: упаковка, автозапуск, `config.example.*`, `README-fork.md`
@@ -179,6 +179,9 @@ ADRs in `docs/decisions/`. **Create a new ADR** when: choosing between libraries
 - **Апстрим только тянем, никогда не пушим.** `main` форка = апстрим + наши коммиты сверху; синк — `./scripts/sync-upstream.ps1` (merge `upstream/main` с `--no-ff`, тег `upstream-sync-<дата>`), процедура и точки конфликтов — `docs/dev/upstream-sync.md`. Push-URL `upstream` стоит `DISABLED`, `remote.pushDefault = origin`. Новый код — только в `fork/`-папках, в ядро — точки регистрации.
 - **Файлы репозитория — только LF.** Бэкенд-агент 2026-11-07 пересохранил `main.rs`, `Cargo.toml`, `weather.rs` с CRLF (PowerShell `Set-Content`/`Out-File`), и диф в одну строку стал дифом в 1471 строку — это ломает слияние с апстримом. Правки делать через Edit/Write; `.gitattributes` теперь принудительно нормализует в LF, но проверять `git diff --stat` перед коммитом: подозрительно большой диф = CRLF.
 - **Два хука режут команды по тексту:** `block-process-kill` (глобальный) и `secret-guard` (репо). Heredoc с `.env`/`kill` в тексте блокируется — писать такие файлы через Write/Edit.
+- **Параллельные полосы (fork-агент + worktree) не порождают субагентов.** 2026-11-07 три полосы гнали `/feature` «в одном лице»: requirements, CPO/CTO, security и QA делал тот же агент, что писал код. Перед merge такой ветки в `main` координатор запускает отдельный security+QA-ревью (opus) по `git diff main...<branch>` — политика «security-reviewer + qa-reviewer по финальному HEAD» иначе не выполняется.
+- **Параллельные ветки берут один и тот же номер ADR.** H-1 и S-1 обе создали `002-*.md`. Номер ADR выдаёт координатор при merge (следующий свободный в `docs/decisions/`), ссылки `ADR-00N` править во всех файлах ветки; в полосе — писать ADR как `NNN-<slug>.md` и не ссылаться на номер в коде, только на slug.
+- **Регистронезависимая ФС: модуль и компонент в одной папке не называть одним словом.** `agendaplus.ts` рядом с `AgendaPlus.tsx` → `./AgendaPlus` резолвится в сам модуль, TS1149 «differs only in casing», компонент `undefined`. Файл плагина называть `<widget>-plugin.ts`, компонент — `PascalCase.tsx`.
 
 ### Environment (Windows + MSYS bash) — already paid for, not TODOs
 

@@ -2,6 +2,14 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import AiUsageMeter, { type UsageReading } from './AiUsage';
 import { defaultUsageProviders, usageSourceKey, type UsageMetric } from '../../core/aiUsage';
+
+// What the meter renders for `v` in the machine locale (ru-RU gives «1,2 тыс.», en «1.2K»).
+// Intl pads with a no-break space; Testing Library collapses node whitespace to plain spaces
+// before matching a string, so the expectation is normalised the same way.
+const compactNumber = (v: number, maximumFractionDigits = 2): string =>
+	new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits })
+		.format(v)
+		.replace(/\s+/g, ' ');
 const AiUsage = (props: Parameters<typeof AiUsageMeter>[0]) => (
 	<AiUsageMeter compact={false} remaining={false} showResets showHeader {...props} />
 );
@@ -215,7 +223,11 @@ describe('AI usage meter', () => {
 				remaining
 			/>
 		);
-		expect(screen.getByText('1.2K tokens')).toBeVisible();
+		// The meter formats with the machine locale (ru-RU renders «1,2 тыс.»), so compare against the
+		// same Intl formatter rather than the English literal; the digits must still be there.
+		const tokensLabel = screen.getByText(`${compactNumber(1200)} tokens`);
+		expect(tokensLabel).toBeVisible();
+		expect(tokensLabel.textContent).toMatch(/^1[.,]2/);
 		expect(screen.getByText('Collecting graph history')).toBeVisible();
 		view.rerender(<AiUsage providers={[{ ...p, enabled: false }]} readings={{}} now={now} />);
 		expect(screen.getByText('Add or enable a provider in Studio.')).toBeVisible();

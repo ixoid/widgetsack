@@ -47,7 +47,7 @@ const statuses: Record<string, Record<string, unknown>> = {
 		configured: true,
 		latitude: 1,
 		longitude: 103,
-		unit: 'C',
+		unit: 'celsius',
 		pollSeconds: 1800,
 		provider: 'met-no'
 	},
@@ -113,7 +113,7 @@ it.each(INTEGRATIONS)(
 				agentControl: false
 			});
 		if (integration.id === 'weather')
-			expect(args).toMatchObject({ latitude: 1, unit: 'C', provider: 'met-no' });
+			expect(args).toMatchObject({ latitude: 1, unit: 'celsius', provider: 'met-no' });
 		if (integration.id === 'mqtt')
 			expect(args).toMatchObject({ clientId: 'personal-client', topics: ['home/#'], tls: true });
 		if (integration.connect)
@@ -138,6 +138,22 @@ it('forwards the stored weather provider on a partial edit, and lets an explicit
 	expect(() =>
 		decodeIntegrationRequest({ integration: 'weather', settings: { provider: 'banana' } })
 	).toThrow('Invalid setting: provider');
+});
+it('re-validates the stored unit word on a partial edit instead of rejecting it', async () => {
+	// The pane stores 'celsius' / 'fahrenheit'; the enum used to be ['C', 'F'], so any edit that
+	// left `unit` out re-validated the stored word and threw "Invalid setting: unit.".
+	const { tool, call } = setup();
+	await tool('studio_configure_integration', { integration: 'weather', settings: { latitude: 2 } });
+	expect(call).toHaveBeenCalledWith(
+		'save_weather_config',
+		expect.objectContaining({ latitude: 2, unit: 'celsius' })
+	);
+	expect(() =>
+		decodeIntegrationRequest({ integration: 'weather', settings: { unit: 'kelvin' } })
+	).toThrow('Invalid setting: unit');
+	expect(() =>
+		decodeIntegrationRequest({ integration: 'weather', settings: { unit: 'F' } })
+	).toThrow('Invalid setting: unit');
 });
 it('tests proposed settings without saving, and gives safe failures', async () => {
 	const { tool, call } = setup();
@@ -255,9 +271,9 @@ it('validates supported fields and boundaries before touching credentials', () =
 	expect(
 		decodeIntegrationRequest({
 			integration: 'weather',
-			settings: { latitude: 0, longitude: 0, unit: 'F', pollSeconds: 60 }
+			settings: { latitude: 0, longitude: 0, unit: 'fahrenheit', pollSeconds: 60 }
 		}).settings
-	).toHaveProperty('unit', 'F');
+	).toHaveProperty('unit', 'fahrenheit');
 });
 
 it('does not write malformed saved settings and redacts nullable or unqualified URLs safely', async () => {

@@ -189,6 +189,11 @@ export const COMMANDS = {
 	weatherConfigStatus: 'weather_config_status',
 	weatherConnect: 'weather_connect',
 	weatherDisconnect: 'weather_disconnect',
+	// HWiNFO hardware sensors (fork: widgetsack/src/fork/hwinfo/mod.rs)
+	saveHwinfoConfig: 'save_hwinfo_config',
+	hwinfoConfigStatus: 'hwinfo_config_status',
+	hwinfoConnect: 'hwinfo_connect',
+	hwinfoDisconnect: 'hwinfo_disconnect',
 	// RSS source (rss.rs)
 	saveRssConfig: 'save_rss_config',
 	rssConfigStatus: 'rss_config_status',
@@ -199,6 +204,11 @@ export const COMMANDS = {
 	agendaConfigStatus: 'agenda_config_status',
 	agendaConnect: 'agenda_connect',
 	agendaDisconnect: 'agenda_disconnect',
+	// Server check source (fork: widgetsack/src/fork/server_check.rs)
+	saveServerCheckConfig: 'save_server_check_config',
+	serverCheckConfigStatus: 'server_check_config_status',
+	serverCheckConnect: 'server_check_connect',
+	serverCheckDisconnect: 'server_check_disconnect',
 	// AI provider + agent control (llm.rs, control.rs)
 	saveLlmConfig: 'save_llm_config',
 	llmClearKey: 'llm_clear_key',

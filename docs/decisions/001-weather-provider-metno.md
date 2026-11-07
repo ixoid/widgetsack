@@ -87,7 +87,8 @@ uses the PC's zone. They coincide while the configured location is in the PC's z
   Open-Meteo path; `plugins/weather.json` stays backward compatible; met.no requests are
   ToS-compliant.
 - **Negative / trade-offs:** in met.no mode there is no feels-like, UV, sunrise/sunset or air
-  quality; days 3-6 are aggregated from four 6-hourly instants (fixture: daily low off by +0.4 C,
+  quality; days 3-6 are aggregated from four 6-hourly instants — the compact body carries no daily
+  min/max, so those highs/lows understate the real extremes (fixture: daily low off by +0.4 C,
   high by -0.2 C); a new third-party host (`api.met.no`) receives the location rounded to ~11 m, as
   Open-Meteo already does. After a provider switch, Open-Meteo-only samples already in the client
   hub may linger until the hub drops them.

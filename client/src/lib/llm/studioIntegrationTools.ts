@@ -79,7 +79,8 @@ export const INTEGRATIONS: Integration[] = [
 		fields: {
 			latitude: { type: 'number', minimum: -90, maximum: 90 },
 			longitude: { type: 'number', minimum: -180, maximum: 180 },
-			unit: { type: 'string', enum: ['C', 'F'] },
+			// The pane and plugins/weather.json store the full word; weather.rs maps it to C/F.
+			unit: { type: 'string', enum: ['celsius', 'fahrenheit'] },
 			pollSeconds: polling,
 			provider: { type: 'string', enum: ['open-meteo', 'met-no'] }
 		}

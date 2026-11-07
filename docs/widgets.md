@@ -904,3 +904,32 @@ Select the microphone to record speech. Select it again to stop and transcribe. 
 | `speak` | toggle | false |  | speak the result (TTS) |
 | `label` | text | "" |  | header text |
 | `color` | color | "" |  | text colour (blank = theme) |
+
+### Server check — `servercheck`
+
+One row per watched host: status dot, name, latency sparkline and how long it has been down.
+
+- **Default size:** 320×160
+
+| key | type | default | options / range | description |
+| --- | --- | --- | --- | --- |
+| `title` | text | "Servers" |  | optional title above the rows |
+| `maxRows` | number | 8 | min 1, max 32, step 1 | how many targets to show (in the order they are configured) |
+| `slowMs` | number | 150 | min 1, max 10000, step 10 | latency at or above this turns the dot amber |
+| `showSparkline` | toggle | true |  | draw the last 20 probes next to each name |
+| `color` | color |  |  | up-dot / latency colour (blank = theme accent) |
+
+### Agenda+ — `agendaplus`
+
+Upcoming events grouped into Today, Tomorrow and This week, with a countdown to the next one.
+
+- **Default size:** 300×320
+- **Controls:** available on the desktop.
+
+| key | type | default | options / range | description |
+| --- | --- | --- | --- | --- |
+| `title` | text | "" |  | optional title above the groups |
+| `maxRows` | number | 8 | min 1, max 30, step 1 | how many events to show across all groups (soonest first) |
+| `showCountdown` | toggle | true |  | show a "Next … in 25 min" strip above the groups |
+| `showLater` | toggle | false |  | also list events a week or more away under "Later" |
+| `color` | color |  |  | time / countdown / today colour (blank = theme accent) |

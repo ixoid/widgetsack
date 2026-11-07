@@ -1,0 +1,104 @@
+/* Server check — a title + one row per target (dot, name, sparkline, latency / down-since).
+   Themeable via --np-* / --srvc-* tokens; the dot and the value take their colour from data-level. */
+.srvc {
+	font-size: var(--np-text-body, 14px);
+	line-height: var(--np-line-body, 20px);
+	display: flex;
+	flex-direction: column;
+	gap: var(--srvc-gap, var(--np-gap, 4px));
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
+	font-family: var(--np-font-display, 'Bahnschrift', 'Arial Narrow', sans-serif);
+	color: var(--np-fg, rgb(255, 255, 255));
+}
+
+.srvc-head {
+	flex: 0 0 auto;
+}
+.srvc-title {
+	font-size: var(--srvc-title-size, var(--np-text-caption, 12px));
+	line-height: var(--np-line-caption, 16px);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--np-label, rgba(255, 255, 255, 0.5));
+}
+
+.srvc-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--srvc-row-gap, var(--np-gap, 4px));
+	min-height: 0;
+	overflow: hidden;
+}
+.srvc-row {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: calc(var(--np-gap, 4px) * 2);
+	font-variant-numeric: tabular-nums;
+}
+
+.srvc-dot {
+	flex: 0 0 auto;
+	width: var(--srvc-dot-size, 9px);
+	height: var(--srvc-dot-size, 9px);
+	border-radius: 50%;
+	background: var(--np-label, rgba(255, 255, 255, 0.4));
+}
+/* up = accent/green, slow = amber, down = red, unknown = muted. */
+.srvc-row[data-level='up'] .srvc-dot {
+	background: var(--srvc-accent, var(--srvc-up, rgb(110, 209, 129)));
+}
+.srvc-row[data-level='slow'] .srvc-dot {
+	background: var(--srvc-slow, rgb(232, 193, 96));
+}
+.srvc-row[data-level='down'] .srvc-dot {
+	background: var(--srvc-down, rgb(226, 100, 100));
+}
+
+.srvc-name {
+	flex: 1 1 0;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.srvc-spark {
+	flex: 0 0 var(--srvc-spark-width, 64px);
+	height: calc(var(--np-line-body, 20px) - 4px);
+	color: var(--srvc-accent, var(--np-accent, rgb(119, 196, 211)));
+	opacity: 0.8;
+}
+.srvc-row[data-level='down'] .srvc-spark {
+	color: var(--srvc-down, rgb(226, 100, 100));
+}
+
+.srvc-value {
+	flex: 0 0 auto;
+	min-width: var(--srvc-value-width, 4.5em);
+	text-align: right;
+	font-weight: 700;
+	color: var(--srvc-accent, var(--np-accent, rgb(119, 196, 211)));
+}
+.srvc-row[data-level='slow'] .srvc-value {
+	color: var(--srvc-slow, rgb(232, 193, 96));
+}
+.srvc-row[data-level='down'] .srvc-value {
+	color: var(--srvc-down, rgb(226, 100, 100));
+	font-size: var(--np-text-caption, 12px);
+}
+.srvc-row[data-level='unknown'] .srvc-value {
+	color: var(--np-label, rgba(255, 255, 255, 0.4));
+}
+
+.srvc-empty {
+	color: var(--np-label, rgba(255, 255, 255, 0.4));
+	font-size: var(--np-text-caption, 12px);
+	line-height: var(--np-line-caption, 16px);
+}
