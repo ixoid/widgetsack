@@ -125,6 +125,8 @@ windows = { version = "0.62", features = [
     "Win32_System_Threading",
     # Local UTC offset for met.no day grouping (fork/weather_metno.rs): GetTimeZoneInformation.
     "Win32_System_Time",
+    # HWiNFO shared memory (fork/hwinfo/shared_mem.rs): OpenFileMappingW / MapViewOfFile / VirtualQuery, read-only.
+    "Win32_System_Memory",
     "Win32_System_JobObjects",
     "Win32_Graphics_Dwm",
     "Media",

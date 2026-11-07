@@ -319,6 +319,7 @@ async fn main() -> Result<(), ()> {
         .manage(weather::WeatherState::default())
         .manage(rss::RssState::default())
         .manage(agenda::AgendaState::default())
+        .manage(fork::hwinfo::HwinfoState::default())
         .manage(timings::SubsystemTimings::default())
         .manage(sensors::ActiveSensors::default())
         .manage(audio::SpectrumState::default())
@@ -451,6 +452,10 @@ async fn main() -> Result<(), ()> {
             agenda::agenda_config_status,
             agenda::agenda_connect,
             agenda::agenda_disconnect,
+            fork::hwinfo::save_hwinfo_config,
+            fork::hwinfo::hwinfo_config_status,
+            fork::hwinfo::hwinfo_connect,
+            fork::hwinfo::hwinfo_disconnect,
             timings::set_subsystem_profiling,
             timings::subsystem_timings,
             llm::save_llm_config,
