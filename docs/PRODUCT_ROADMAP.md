@@ -16,7 +16,7 @@
 ```
 /feature For the met.no provider, keep the day's observed high/low in the worker between polls (reset at local midnight) so the "today" reading does not shrink to the remaining hours in the evening. Pure seam with tests; remove the "remaining hours" hint when active. See docs/decisions/001-weather-provider-metno.md (owner accepted the partial day for v1).
 ```
-**Priority:** Phase 2 · **Depends on:** W-1 · **Est. size/mode:** S · SPEC
+**Priority:** Phase 2 · **Depends on:** W-1 · **Est. size/mode:** S · SPEC · **Status:** ✅ built 2026-11-07 on `feat/W-2-metno-daily-extremes` (lane 3; `DayExtremes` seam, ADR-001 rule 2 superseded; awaiting merge)
 
 ### [W-3]: Forecast widget — hourly strip + localised day rows
 ```

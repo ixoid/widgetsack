@@ -350,6 +350,8 @@ pub async fn run_weather_client<R: Runtime>(app: AppHandle<R>, cfg: WeatherConfi
 
     let mut idle = true;
     let mut fails: u32 = 0;
+    // met.no only: today's high/low remembered across polls (fork, W-2). Fresh per worker.
+    let mut extremes = crate::fork::weather_metno::DayExtremes::default();
     loop {
         if !located || !weather_wanted(&app) {
             idle = true;
@@ -377,7 +379,11 @@ pub async fn run_weather_client<R: Runtime>(app: AppHandle<R>, cfg: WeatherConfi
                     } else {
                         0
                     };
-                    let batch = pick_samples(&cfg.provider, &json, letter, now_ms(), offset);
+                    let ts_ms = now_ms();
+                    let mut batch = pick_samples(&cfg.provider, &json, letter, ts_ms, offset);
+                    if metno {
+                        extremes.carry(&mut batch, (ts_ms / 1000) as i64, offset);
+                    }
                     if !batch.is_empty() {
                         emit_batch(&app, &batch);
                     }

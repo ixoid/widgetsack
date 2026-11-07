@@ -71,6 +71,13 @@ sleet-shower code). Unknown symbol omits `weather.code` (neutral placeholder).
 2. **Partial day 0.** The met.no series starts at the current hour, so "today's" high/low only cover
    the hours left (Open-Meteo returns the full day). **Decision: accept for v1** and show the settings hint "met.no: today's high/low cover the
    remaining hours". Tracking the day's extremes across polls is a named follow-up (BACKLOG, LOW).
+   **Superseded 2026-11-07 by W-2:** the worker now carries today's running high/low across polls
+   (`fork::weather_metno::DayExtremes`, pure, tested): each poll folds in the forecast high/low and
+   the current temperature; the memory resets when the local day (same offset rule as 1) changes and
+   is left untouched by a failed/malformed poll. `weather.high`/`weather.low`/`weather.day.0.*` carry
+   the running values; days 1+ are unchanged. The settings hint sentence was removed. Remaining
+   limit: the memory starts with the worker, so the first evening after an app launch (or a config
+   change, which restarts the worker) still only covers the hours since launch.
 
 Note: Open-Meteo groups by the LOCATION's time zone (`timezone=auto`); any local-offset variant here
 uses the PC's zone. They coincide while the configured location is in the PC's zone.

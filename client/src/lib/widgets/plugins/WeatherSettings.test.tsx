@@ -293,11 +293,11 @@ describe('WeatherSettings', () => {
 		const { getByLabelText, queryByText } = renderPanel();
 		await waitFor(() => expect(weatherConfigStatus).toHaveBeenCalled());
 		const select = getByLabelText('Weather provider');
-		expect(queryByText(/remaining hours/)).toBeNull();
+		expect(queryByText(/MET Norway does not provide/)).toBeNull();
 		fireEvent.change(select, { target: { value: 'met-no' } });
-		expect(queryByText(/remaining hours/)).toBeTruthy();
+		expect(queryByText(/MET Norway does not provide/)).toBeTruthy();
 		fireEvent.change(select, { target: { value: 'open-meteo' } });
-		expect(queryByText(/remaining hours/)).toBeNull();
+		expect(queryByText(/MET Norway does not provide/)).toBeNull();
 	});
 
 	it('clears "Saved ✓" when the provider changes', async () => {

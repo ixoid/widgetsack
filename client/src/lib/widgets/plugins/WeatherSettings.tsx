@@ -103,7 +103,7 @@ export default function WeatherSettings() {
 			{provider === 'met-no' && (
 				<small className="has-help" id="weather-metno-hint">
 					MET Norway does not provide air quality, UV index, feels-like temperature, or sunrise and
-					sunset times. Today’s high and low cover the remaining hours only. Data: MET Norway.
+					sunset times. Data: MET Norway.
 				</small>
 			)}
 
