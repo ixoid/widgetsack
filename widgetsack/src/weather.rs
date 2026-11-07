@@ -762,6 +762,25 @@ mod tests {
     }
 
     #[test]
+    fn unreadable_stored_config_leaves_nothing_to_keep() {
+        // `save_weather_config` treats a config read error as "no stored provider". The read error
+        // for a corrupt file is a parse failure; mirror that chain and check the save still resolves.
+        for corrupt in ["", "{", "not json", r#"{ "latitude": "north" }"#, "null"] {
+            let stored = serde_json::from_str::<WeatherConfig>(corrupt)
+                .map_err(|e| e.to_string())
+                .map(Some)
+                .ok()
+                .flatten()
+                .map(|c| c.provider)
+                .unwrap_or_default();
+            assert_eq!(stored, "", "{corrupt:?}");
+            assert_eq!(resolve_provider(None, &stored), "open-meteo", "{corrupt:?}");
+            // An explicit choice from the UI still wins over the broken file.
+            assert_eq!(resolve_provider(Some("met-no"), &stored), "met-no");
+        }
+    }
+
+    #[test]
     fn air_quality_is_skipped_for_met_no_only() {
         assert!(!wants_air("met-no"));
         assert!(wants_air("open-meteo"));

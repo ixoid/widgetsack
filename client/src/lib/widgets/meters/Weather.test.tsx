@@ -158,4 +158,30 @@ describe('Weather meter', () => {
 		);
 		expect(container.querySelectorAll('.wx-day')).toHaveLength(1);
 	});
+
+	it.each([
+		[0, 'sun', 'Clear'],
+		[1, 'weather', 'Mainly clear'],
+		[2, 'weather', 'Partly cloudy']
+	])('met.no (no is_day sensor): code %i renders the day glyph, no NaN', (code, icon, label) => {
+		const { container } = render(
+			<Weather sensors={{ temp: scalar(4), code: scalar(code), unit: txt('C') }} />
+		);
+		expect(
+			container.querySelector('.wx-icon')?.querySelector(`[data-icon="${icon}"]`)
+		).toBeTruthy();
+		expect(container.querySelector('.wx-cond')?.textContent).toBe(label);
+		expect(container.textContent).not.toMatch(/NaN|undefined/);
+	});
+
+	it('met.no with only temp + code: no hi/lo, detail or forecast rows, no 0 placeholders', () => {
+		const { container } = render(
+			<Weather forecastDays={3} sensors={{ temp: scalar(-1.4), code: scalar(3) }} />
+		);
+		expect(container.querySelector('.wx-temp-val')?.textContent).toBe('-1°C');
+		expect(container.querySelector('[data-part="hilo"]')).toBeNull();
+		expect(container.querySelector('[data-part="detail"]')).toBeNull();
+		expect(container.querySelector('[data-part="forecast"]')).toBeNull();
+		expect(container.textContent).not.toMatch(/NaN|feels|rh|km\/h/);
+	});
 });

@@ -49,8 +49,11 @@ fn coord(v: f64, limit: f64) -> String {
     }
 }
 
-/// Redirect rule: follow only `https` hops to `api.met.no`, at most 3, so the coordinate-bearing URL
-/// never leaves the provider or drops to plain http. Pure seam over the hop's URL and hop count.
+/// Redirect rule: follow only `https` hops to `api.met.no`, so the coordinate-bearing URL never
+/// leaves the provider or drops to plain http. `hops` is reqwest's `previous().len()`, which counts
+/// the ORIGINAL request too — so `hops < 3` follows at most 2 redirects. Keep it that strict; a
+/// "correction" to 3 redirects here would loosen the control (security pass 2, 2026-11-07).
+/// Pure seam over the hop's URL and hop count.
 fn follow_redirect(url: &reqwest::Url, hops: usize) -> bool {
     url.scheme() == "https" && url.host_str() == Some("api.met.no") && hops < 3
 }
@@ -943,5 +946,57 @@ mod tests {
     #[test]
     fn local_offset_is_a_sane_zone() {
         assert!(local_utc_offset_secs().abs() <= 14 * 3600);
+    }
+
+    #[test]
+    fn unsorted_and_duplicate_timestamps_do_not_change_day_extremes() {
+        let now = days_from_civil(2026, 11, 7) * 86_400;
+        let sorted = body_at(&[(6, 1.0, "fair"), (12, 7.0, "fair"), (18, -2.0, "fair")]);
+        // Same points, shuffled, with the noon timestamp repeated (cooler duplicate).
+        let shuffled = body_at(&[
+            (18, -2.0, "fair"),
+            (12, 7.0, "fair"),
+            (6, 1.0, "fair"),
+            (12, 3.0, "fair"),
+        ]);
+        let a = days_of(&sorted, 0, now);
+        let b = days_of(&shuffled, 0, now);
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 1);
+        assert_eq!((a[0].high, a[0].low), (Some(7.0), Some(-2.0)));
+        assert_eq!((b[0].high, b[0].low), (Some(7.0), Some(-2.0)));
+    }
+
+    #[test]
+    fn overflowing_fahrenheit_temperature_is_dropped_not_emitted() {
+        // 1e308 degC is finite, but x9/5+32 overflows to infinity: must be skipped (no inf/NaN).
+        let b = body_at(&[(15, 1e308, "fair_day")]);
+        let ts = (days_from_civil(2026, 11, 7) * 86_400 + 15 * 3600) as u64 * 1000;
+        let f = metno_to_samples(&b, "F", ts, 0);
+        assert!(val(&f, "weather.temp").is_none());
+        assert!(val(&f, "weather.high").is_none());
+        assert!(val(&f, "weather.day.0.low").is_none());
+        // The rest of the reading survives.
+        assert_eq!(val(&f, "weather.unit").unwrap(), "F");
+        assert_eq!(num_of(&f, "weather.code"), 1.0);
+        for s in &f {
+            if let crate::sensors::SensorValue::Scalar(n) = s.value {
+                assert!(n.is_finite(), "{}", s.sensor);
+            }
+        }
+    }
+
+    #[test]
+    fn symbol_with_an_unexpected_suffix_yields_no_code_and_no_is_day() {
+        assert_eq!(symbol_to_wmo("fair_dusk"), None);
+        assert_eq!(symbol_to_wmo("fair_day_night"), None);
+        assert_eq!(symbol_to_wmo(""), None);
+        let b = body_at(&[(10, 4.0, "fair_dusk")]);
+        let ts = (days_from_civil(2026, 11, 7) * 86_400 + 10 * 3600) as u64 * 1000;
+        let s = metno_to_samples(&b, "C", ts, 0);
+        assert!(val(&s, "weather.code").is_none());
+        assert!(val(&s, "weather.is_day").is_none());
+        // Temperature is independent of the symbol.
+        assert_eq!(num_of(&s, "weather.temp"), 4.0);
     }
 }

@@ -34,6 +34,16 @@ describe('SunMoon meter', () => {
 		expect(times).toEqual(['—', '—']);
 	});
 
+	it('dashes rise/set when only other weather ids are present or the values are malformed', () => {
+		const num = (v: number): SensorState => ({ value: { kind: 'scalar', value: v }, history: [] });
+		const { container } = render(
+			<SunMoon sensors={{ temp: num(4), rise: tx(''), set: tx('soon') }} />
+		);
+		const times = [...container.querySelectorAll('.sm-time')].map((e) => e.textContent);
+		expect(times).toEqual(['—', '—']);
+		expect(container.querySelector('[data-part="moon"]')).not.toBeNull();
+	});
+
 	it('applies the accent color as a CSS variable when set', () => {
 		const { container } = render(<SunMoon sensors={{}} color="#abc123" />);
 		const root = container.querySelector('.np-sunmoon') as HTMLElement;
