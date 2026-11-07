@@ -904,3 +904,17 @@ Select the microphone to record speech. Select it again to stop and transcribe. 
 | `speak` | toggle | false |  | speak the result (TTS) |
 | `label` | text | "" |  | header text |
 | `color` | color | "" |  | text colour (blank = theme) |
+
+### Server check — `servercheck`
+
+One row per watched host: status dot, name, latency sparkline and how long it has been down.
+
+- **Default size:** 320×160
+
+| key | type | default | options / range | description |
+| --- | --- | --- | --- | --- |
+| `title` | text | "Servers" |  | optional title above the rows |
+| `maxRows` | number | 8 | min 1, max 32, step 1 | how many targets to show (in the order they are configured) |
+| `slowMs` | number | 150 | min 1, max 10000, step 10 | latency at or above this turns the dot amber |
+| `showSparkline` | toggle | true |  | draw the last 20 probes next to each name |
+| `color` | color |  |  | up-dot / latency colour (blank = theme accent) |

@@ -1,0 +1,54 @@
+/* Server check settings — target rows inside the shared plugins panel (`has-*` tokens). */
+.canvas .plugins-panel .srvc-target {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2, 6px);
+	padding: var(--space-3, 10px);
+	margin-bottom: var(--space-3, 10px);
+	border-radius: var(--radius-md, 8px);
+	background: var(--np-surface-2, rgba(255, 255, 255, 0.04));
+	box-shadow: inset 0 0 0 1px var(--np-border, rgba(255, 255, 255, 0.08));
+}
+.canvas .plugins-panel .srvc-target[data-invalid='true'] {
+	box-shadow: inset 0 0 0 1px var(--np-warn, rgba(232, 193, 96, 0.6));
+}
+.canvas .plugins-panel .srvc-target-head,
+.canvas .plugins-panel .srvc-target-grid {
+	display: flex;
+	gap: var(--space-2, 6px);
+	align-items: flex-end;
+}
+.canvas .plugins-panel .srvc-target .has-field {
+	flex: 1 1 0;
+	min-width: 0;
+	margin: 0;
+}
+.canvas .plugins-panel .srvc-target .has-field.srvc-grow {
+	flex: 2 1 0;
+}
+.canvas .plugins-panel .srvc-target select {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border-radius: var(--radius-sm, 6px);
+	border: 1px solid var(--np-border, rgba(255, 255, 255, 0.12));
+	background: var(--np-surface, rgba(0, 0, 0, 0.25));
+	color: inherit;
+	font: inherit;
+}
+.canvas .plugins-panel .srvc-remove {
+	flex: 0 0 auto;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: var(--radius-sm, 6px);
+	border: 1px solid var(--np-border, rgba(255, 255, 255, 0.12));
+	background: transparent;
+	color: var(--np-label, rgba(255, 255, 255, 0.6));
+	cursor: pointer;
+	line-height: 1;
+}
+.canvas .plugins-panel .srvc-remove:hover {
+	color: var(--np-fg, #fff);
+	border-color: var(--np-danger, rgb(226, 100, 100));
+}
