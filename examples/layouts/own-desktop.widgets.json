@@ -104,8 +104,8 @@
             "rect": {
               "h": 110,
               "w": 180,
-              "x": 2104,
-              "y": 560
+              "x": 908,
+              "y": 24
             },
             "type": "ticker"
           }
@@ -130,10 +130,10 @@
           "id": "servercheck-main",
           "unit": {
             "config": {
-              "title": "Servers",
               "maxRows": 8,
               "showSparkline": true,
-              "slowMs": 150
+              "slowMs": 150,
+              "title": "Servers"
             },
             "id": "servercheck-main",
             "rect": {
@@ -143,25 +143,6 @@
               "y": 570
             },
             "type": "servercheck"
-          }
-        },
-        {
-          "id": "agendaplus-main",
-          "unit": {
-            "config": {
-              "title": "Agenda+",
-              "maxRows": 8,
-              "showCountdown": true,
-              "showLater": false
-            },
-            "id": "agendaplus-main",
-            "rect": {
-              "h": 440,
-              "w": 640,
-              "x": 1380,
-              "y": 248
-            },
-            "type": "agendaplus"
           }
         },
         {
@@ -178,8 +159,8 @@
             "rect": {
               "h": 110,
               "w": 180,
-              "x": 1904,
-              "y": 560
+              "x": 720,
+              "y": 24
             },
             "type": "ticker"
           }
@@ -198,8 +179,8 @@
             "rect": {
               "h": 110,
               "w": 180,
-              "x": 2300,
-              "y": 560
+              "x": 1104,
+              "y": 24
             },
             "type": "ticker"
           }
