@@ -86,19 +86,19 @@ or it is blind.
 - **Fix:** if a hub-side "drop prefix on status connecting" mechanism is ever added for weather, reuse it here.
 - **Check:** none — owner decides whether direct bindings to removed targets matter.
 
+## Closed
+<!-- fixed / wont-fix / stale items moved here with date + reason -->
+
 ### [qa] met.no day highs/lows for days 3-6 use 6-hourly instants
 - **Severity:** LOW
 - **File:** `widgetsack/src/fork/weather_metno.rs:381`
 - **Found by:** qa-reviewer
 - **Feature:** weather provider met.no
 - **Date:** 2026-11-07
-- **Status:** open
+- **Status:** closed 2026-11-07 — wording added to ADR-001 Consequences: `grep -c 'understate the real extremes' docs/decisions/001-weather-provider-metno.md` → `1` (positive control: `grep -c 'understate' docs/decisions/002-server-check-source.md` → `0`). Documentation only; no code change.
 - **Description:** 4 samples/day understate real extremes; compact has no daily min/max.
 - **Fix:** note in ADR Consequences.
 - **Check:** none - documentation wording.
-
-## Closed
-<!-- fixed / wont-fix / stale items moved here with date + reason -->
 
 ### [qa] Studio integration tool weather `unit` enum ['C','F'] does not match stored 'celsius'/'fahrenheit'
 - **Severity:** LOW
