@@ -46,7 +46,8 @@
 ```
 /feature Camera widget (brief stage 2): `camera` fork widget = <video muted autoplay playsinline> with a small transport module (WebRTC via go2rtc WHEP first, MSE fallback), reconnect with backoff, "no signal" state, pause when hidden/unmounted; config plugins/camera.json via secure_config (go2rtc base URL default http://127.0.0.1:1984, stream list); Rust camera_probe (GET /api) and an optional supervisor that starts a configured go2rtc.exe as a child (job object, studio_agent.rs pattern) behind a toggle; CSP connect-src extended ONLY for the configured loopback origin (ADR + security review); example go2rtc.yaml without credentials. Done when one camera shows live video ≤ ~1 s latency and recovers after the camera goes away. See docs/dev/fork-stage0-plan.md § Stage 2.
 ```
-**Priority:** Phase 2 · **Depends on:** none · **Est. size/mode:** L · DATA — CSP change is a security boundary
+**Priority:** Phase 1 (owner request 2026-11-07: "мне надо сделать просмотр видео с камеры") · **Depends on:** none · **Est. size/mode:** L · DATA — CSP change is a security boundary
+**Owner facts (no secrets here):** one IP camera on the LAN, RTSP on a non-default port (8554), stream path `ch2`, basic-auth credentials in the URL. The full URL with credentials is held by the owner locally (`work/camera.local.md`, gitignored) and must only ever land in the local `go2rtc.yaml`; the committed `go2rtc.example.yaml` uses placeholders.
 
 ## Vector K — Calendar (brief stage 3)
 
