@@ -37,20 +37,9 @@ or it is blind.
 - **Feature:** ticker widgets
 - **Date:** 2026-11-07
 - **Status:** open
-- **Description:** the owner wants three tickers on the overlay — rubles per euro, rubles per dollar, bitcoin in USD — each with an arrow showing the day's change, red for down and green for up. The stock `ticker` meter already draws a colour-coded arrow + % change vs Yahoo's previous close, so most of this is configuration. Two gaps: (1) the one ticker in the live layout is configured with symbol `BTC/USD`, which is not a Yahoo symbol (Yahoo wants `BTC-USD`), so it most likely shows nothing; (2) "change over 24 h" is approximated by "vs previous close" — for FX that is the previous trading day (flat over weekends), for BTC it is the previous UTC midnight; the poller fetches `range=1d`, so a true rolling-24h delta would need `range=2d` plus a pure helper.
-- **Fix:** step 1 (config only, after `scripts/snapshot-layout.ps1`): three `ticker` widgets with symbols `EURRUB=X`, `USDRUB=X`, `BTC-USD`, labels «€ → ₽», «$ → ₽», «BTC», `decimals` 2 / 2 / 0; confirm `=` survives `yahoo_chart_url` (only `^` is escaped today — `=` is legal in a URL path) and that Yahoo returns `chartPreviousClose` for `=X` pairs. Step 2 (optional, SPEC): if the owner wants a real 24 h delta, add `stocks.<SYM>.change24h` computed in `quote_to_samples` from a `2d` series, test it without network, and let the ticker bind to it.
+- **Description:** the owner wants three tickers on the overlay — rubles per euro, rubles per dollar, bitcoin in USD — each with an arrow showing the day's change, red for down and green for up. The stock `ticker` meter already draws a colour-coded arrow + % change vs Yahoo's previous close, so most of this is configuration. Two gaps: (1) the one ticker in the live layout is configured with symbol `BTC/USD`, which is not a Yahoo symbol (Yahoo wants `BTC-USD`), so it most likely shows nothing; (2) the arrow is "vs previous close" — for FX the previous trading day (flat over weekends), for BTC the previous UTC midnight; the owner confirmed that is the intended meaning.
+- **Fix:** step 1 (config only, after `scripts/snapshot-layout.ps1`): three `ticker` widgets with symbols `EURRUB=X`, `USDRUB=X`, `BTC-USD`, labels «€ → ₽», «$ → ₽», «BTC», `decimals` 2 / 2 / 0; confirm `=` survives `yahoo_chart_url` (only `^` is escaped today — `=` is legal in a URL path) and that Yahoo returns `chartPreviousClose` for `=X` pairs. Owner decision 2026-11-07: change vs previous close is exactly what is wanted — no rolling-24h work.
 - **Check:** overlay shows three tickers with a price and a coloured arrow for each symbol; `grep -c '"symbol": "BTC/USD"' examples/layouts/own-desktop.widgets.json → 0` after the layout is fixed and re-snapshotted.
-
-### [qa] Stale Open-Meteo values stay in mounted windows after switching to met.no
-- **Severity:** MEDIUM
-- **File:** `widgetsack/src/weather.rs:319`
-- **Found by:** qa-reviewer
-- **Feature:** weather provider met.no
-- **Date:** 2026-11-07
-- **Status:** open
-- **Description:** only the backend prime cache is cleared; mounted hubs keep weather.apparent/uv/sun.*/air.* so feels, sun times and AQI go stale until reload.
-- **Fix:** emit a clear/reset for weather.* on restart or have the hub drop weather.* on status 'connecting'.
-- **Check:** none - owner picks the reset mechanism; then add a hub test.
 
 ## LOW / Cosmetic
 
@@ -89,6 +78,17 @@ or it is blind.
 
 ## Closed
 <!-- fixed / wont-fix / stale items moved here with date + reason -->
+
+### [qa] Stale Open-Meteo values stay in mounted windows after switching to met.no
+- **Severity:** MEDIUM
+- **File:** `widgetsack/src/weather.rs:319`
+- **Found by:** qa-reviewer
+- **Feature:** weather provider met.no
+- **Date:** 2026-11-07
+- **Status:** closed 2026-11-07 — wont-fix: the owner does not plan to switch weather providers, so the only trigger (provider change at runtime) does not occur on this install; reopen if a provider switch is ever done. No code changed.
+- **Description:** only the backend prime cache is cleared; mounted hubs keep weather.apparent/uv/sun.*/air.* so feels, sun times and AQI go stale until reload.
+- **Fix:** emit a clear/reset for weather.* on restart or have the hub drop weather.* on status 'connecting'.
+- **Check:** none - owner picks the reset mechanism; then add a hub test.
 
 ### [qa] Line endings of weather.rs, main.rs, Cargo.toml flipped LF to CRLF
 - **Severity:** HIGH
