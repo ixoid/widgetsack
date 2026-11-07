@@ -1,0 +1,7 @@
+# Fork guard: agents on Windows must not introduce CRLF (an LF->CRLF rewrite of main.rs inflated a 1-line diff to 1471 lines, 2026-11-07).
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.bmp binary
+*.woff2 binary
+*.der binary
