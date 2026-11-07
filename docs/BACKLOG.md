@@ -97,19 +97,19 @@ or it is blind.
 - **Fix:** note in ADR Consequences.
 - **Check:** none - documentation wording.
 
+## Closed
+<!-- fixed / wont-fix / stale items moved here with date + reason -->
+
 ### [qa] Studio integration tool weather `unit` enum ['C','F'] does not match stored 'celsius'/'fahrenheit'
 - **Severity:** LOW
 - **File:** `client/src/lib/llm/studioIntegrationTools.ts:82`
 - **Found by:** security-reviewer (pre-existing upstream, not security)
 - **Feature:** weather provider met.no
 - **Date:** 2026-11-07
-- **Status:** open
+- **Status:** closed 2026-11-07 — enum changed to `['celsius', 'fahrenheit']` (the words the pane and `plugins/weather.json` store; `weather.rs::unit_letter` maps them); `cd client && npx vitest run src/lib/llm/studioIntegrationTools.test.ts` → `Test Files 1 passed (1)`, `Tests 15 passed (15)` with the new case: status `unit: 'celsius'` + settings `{ latitude: 2 }` → `save_weather_config` called with `unit: 'celsius'`; positive control in the same case: `{ unit: 'kelvin' }` and the old `{ unit: 'F' }` both throw `Invalid setting: unit`.
 - **Description:** the settings pane stores `unit: "celsius"`, so any tool edit that omits `unit` re-validates `"celsius"` against `['C','F']` and throws `Invalid setting: unit.`; an explicit `"F"` is saved but `unit_letter("F")` → C and the Open-Meteo URL asks for Celsius. The test status mock uses `unit: 'C'`, which hides it.
 - **Fix:** change the enum to `['celsius','fahrenheit']` and the test mock to `unit: 'celsius'` (or map C/F to celsius/fahrenheit in the tool before save).
 - **Check:** `cd client && npx vitest run src/lib/llm/studioIntegrationTools.test.ts` → passes with a case where status `unit: 'celsius'` and settings `{ latitude: 2 }` calls `save_weather_config` with `unit: 'celsius'` (positive control: the same case with `settings: { unit: 'kelvin' }` still throws `Invalid setting: unit.`).
-
-## Closed
-<!-- fixed / wont-fix / stale items moved here with date + reason -->
 
 ### [qa] Upstream AiUsage tests depend on the machine locale
 - **Severity:** LOW
