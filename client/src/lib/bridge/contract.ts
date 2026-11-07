@@ -189,6 +189,11 @@ export const COMMANDS = {
 	weatherConfigStatus: 'weather_config_status',
 	weatherConnect: 'weather_connect',
 	weatherDisconnect: 'weather_disconnect',
+	// HWiNFO hardware sensors (fork: widgetsack/src/fork/hwinfo/mod.rs)
+	saveHwinfoConfig: 'save_hwinfo_config',
+	hwinfoConfigStatus: 'hwinfo_config_status',
+	hwinfoConnect: 'hwinfo_connect',
+	hwinfoDisconnect: 'hwinfo_disconnect',
 	// RSS source (rss.rs)
 	saveRssConfig: 'save_rss_config',
 	rssConfigStatus: 'rss_config_status',
