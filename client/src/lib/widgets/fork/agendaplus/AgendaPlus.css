@@ -1,0 +1,65 @@
+/* Agenda+ reuses the stock Agenda classes (.agenda, .ag-*) from meters/Agenda.css for rows (imported
+   by AgendaPlus.tsx), so the two widgets share one look; only the group headings and the "Next"
+   strip are new. */
+
+.agp-next {
+	flex: 0 0 auto;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: baseline;
+	column-gap: calc(var(--np-gap, 4px) * 2);
+	padding: calc(var(--np-gap, 4px) * 1.5) calc(var(--np-gap, 4px) * 2);
+	border-radius: var(--np-radius, 6px);
+	background: var(--agp-next-bg, rgba(255, 255, 255, 0.06));
+	box-shadow: inset 0 0 0 1px var(--np-border, rgba(255, 255, 255, 0.1));
+}
+.agp-next-label {
+	font-size: var(--np-text-caption, 12px);
+	line-height: var(--np-line-caption, 16px);
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--np-label, rgba(255, 255, 255, 0.6));
+}
+.agp-next-summary {
+	min-width: 0;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.agp-next-in {
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+	color: var(--ag-accent, var(--np-accent, rgb(119, 196, 211)));
+}
+.agp-groups {
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--np-gap, 4px) * 3);
+	min-height: 0;
+	overflow: auto;
+	scrollbar-width: thin;
+	scrollbar-color: var(--np-border, rgba(255, 255, 255, 0.18)) transparent;
+}
+.agp-group {
+	flex: 0 0 auto;
+	min-width: 0;
+}
+.agp-group-title {
+	margin: 0 0 calc(var(--np-gap, 4px) * 1.5);
+	font-size: var(--np-text-caption, 12px);
+	line-height: var(--np-line-caption, 16px);
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--np-label, rgba(255, 255, 255, 0.6));
+}
+.agp-group[data-group='today'] .agp-group-title {
+	color: var(--ag-accent, var(--np-accent, rgb(119, 196, 211)));
+}
+.agp-list {
+	overflow: visible;
+	padding-right: 0;
+}

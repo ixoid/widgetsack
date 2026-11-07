@@ -13,6 +13,7 @@ import { registerAgendaPlugin } from './agenda';
 import { registerLlmPlugin } from './llm';
 import { registerHwinfoPlugin } from '../fork/hwinfo';
 import { registerServerCheckPlugin } from '../fork/server-check/server-check';
+import { registerAgendaPlusPlugin } from '../fork/agendaplus/agendaplus-plugin';
 
 export type PluginLoadError = { id: string; name: string; error: string };
 
@@ -28,7 +29,8 @@ const BUILTINS: { id: string; name: string; register: () => void }[] = [
 	{ id: 'agenda', name: 'Agenda', register: registerAgendaPlugin },
 	{ id: 'ai-provider', name: 'AI Provider', register: registerLlmPlugin },
 	{ id: 'hwinfo', name: 'Hardware (HWiNFO)', register: registerHwinfoPlugin },
-	{ id: 'server-check', name: 'Server check', register: registerServerCheckPlugin }
+	{ id: 'server-check', name: 'Server check', register: registerServerCheckPlugin },
+	{ id: 'agendaplus', name: 'Agenda+', register: registerAgendaPlusPlugin }
 ];
 
 let registered = false;

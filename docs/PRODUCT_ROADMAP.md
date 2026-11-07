@@ -55,7 +55,7 @@
 ```
 /feature Calendar polish (brief stage 3, ICS path is confirmed working with the owner's Google private feed): an `agendaplus` fork widget reusing agenda.list with today / tomorrow / this week groups and a countdown to the next event; pure helpers in client/src/lib/core/fork/agendaGroups.ts with tests; register via a fork plugin; gen:docs. CalDAV is out of scope unless the owner asks.
 ```
-**Priority:** Phase 2 · **Depends on:** none · **Est. size/mode:** S · SPEC
+**Priority:** Phase 2 · **Depends on:** none · **Est. size/mode:** S · SPEC · **Status:** ✅ built 2026-11-07 on `feat/K-1-agendaplus` (lane 3; `agendaplus` widget + `core/fork/agendaGroups.ts`; awaiting merge)
 
 ## Vector P — Packaging (brief stage 4)
 
