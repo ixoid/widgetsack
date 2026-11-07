@@ -83,7 +83,7 @@ Key invariants:
 - [ ] Этап 0: план этапов 1–3 согласован с владельцем (`docs/dev/fork-stage0-plan.md` § Decisions requested)
 - [x] Этап 1: server check — в `main` (merge f53c9f5, 2026-11-07, ADR-002); осталась проверка владельцем на живом оверлее с тремя реальными целями и карточка в раскладке
 - [ ] Этап 2: camera / go2rtc (`feat/camera`)
-- [ ] Этап 3: calendar / agenda (`feat/calendar`)
+- [x] Этап 3: calendar / agenda — стоковый Agenda на ICS работает, K-1 `agendaplus` (группы + обратный отсчёт) в `main` 73a4247, виден на dev-оверлее (2026-11-07). CalDAV вне scope.
 - [ ] Этап 4: упаковка, автозапуск, `config.example.*`, `README-fork.md`
 
 ---
