@@ -429,7 +429,7 @@
                   "name": "CPU & RAM",
                   "size": {
                     "w": 440,
-                    "h": 180
+                    "h": 210
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
@@ -535,6 +535,26 @@
                             }
                           }
                         ]
+                      },
+                      {
+                        "id": "ram-text-slot",
+                        "basis": 22,
+                        "unit": {
+                          "id": "ram-text",
+                          "type": "text",
+                          "sensor": "mem.used.bytes",
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 22
+                          },
+                          "config": {
+                            "label": "",
+                            "value": "RAM {bytes(mem.used.bytes)} / {bytes(mem.total)} · {round(mem.used)}%"
+                          },
+                          "css": "font-size: var(--np-text-body); color: var(--np-label);"
+                        }
                       }
                     ]
                   }
