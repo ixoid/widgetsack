@@ -11,7 +11,8 @@ vi.mock('./weather-commands', () => ({
 			latitude: 51.5072,
 			longitude: -0.1276,
 			unit: 'fahrenheit',
-			pollSeconds: 1800
+			pollSeconds: 1800,
+			provider: 'open-meteo'
 		})
 	),
 	saveWeatherConfig: vi.fn(() => Promise.resolve()),
@@ -47,7 +48,8 @@ beforeEach(() => {
 		latitude: 51.5072,
 		longitude: -0.1276,
 		unit: 'fahrenheit',
-		pollSeconds: 1800
+		pollSeconds: 1800,
+		provider: 'open-meteo'
 	});
 });
 
@@ -60,13 +62,13 @@ describe('WeatherSettings', () => {
 	});
 
 	it('prefills the form from weather_config_status and starts the live feed', async () => {
-		const { container, getByText } = renderPanel();
+		const { container, getByText, getByLabelText } = renderPanel();
 		const lat = container.querySelector('input[placeholder="51.5072"]') as HTMLInputElement;
 		const lon = container.querySelector('input[placeholder="-0.1276"]') as HTMLInputElement;
 		await waitFor(() => expect(lat.value).toBe('51.5072'));
 		expect(lon.value).toBe('-0.1276');
 		// Units mirror the loaded config; poll seconds are shown as minutes (1800s → 30min).
-		const unit = container.querySelector('select') as HTMLSelectElement;
+		const unit = getByLabelText('Units') as HTMLSelectElement;
 		expect(unit.value).toBe('fahrenheit');
 		const poll = container.querySelector('input[type="number"]') as HTMLInputElement;
 		expect(poll.value).toBe('30');
@@ -122,10 +124,10 @@ describe('WeatherSettings', () => {
 	});
 
 	it('saves the parsed numeric config (minutes → seconds) then restarts the task in order', async () => {
-		const { container, getByRole } = renderPanel();
+		const { container, getByRole, getByLabelText } = renderPanel();
 		const lat = container.querySelector('input[placeholder="51.5072"]') as HTMLInputElement;
 		await waitFor(() => expect(lat.value).toBe('51.5072'));
-		const unit = container.querySelector('select') as HTMLSelectElement;
+		const unit = getByLabelText('Units') as HTMLSelectElement;
 		fireEvent.change(unit, { target: { value: 'celsius' } });
 		const poll = container.querySelector('input[type="number"]') as HTMLInputElement;
 		fireEvent.change(poll, { target: { value: '20' } });
@@ -137,7 +139,8 @@ describe('WeatherSettings', () => {
 				latitude: 51.5072,
 				longitude: -0.1276,
 				unit: 'celsius',
-				pollSeconds: 1200 // 20 minutes
+				pollSeconds: 1200, // 20 minutes
+				provider: 'open-meteo'
 			})
 		);
 		await waitFor(() => expect(weatherReconnect).toHaveBeenCalled());
@@ -205,6 +208,7 @@ describe('WeatherSettings', () => {
 			longitude: number;
 			unit: string;
 			pollSeconds: number;
+			provider?: string;
 		}) => void = () => undefined;
 		vi.mocked(weatherConfigStatus).mockImplementation(
 			() => new Promise((res) => (resolveStatus = res))
@@ -233,12 +237,98 @@ describe('WeatherSettings', () => {
 			unit: '', // unset → the || 'celsius' fallback
 			pollSeconds: 0 // unset → the || 900 fallback → 15 minutes
 		});
-		const { container } = renderPanel();
+		const { container, getByLabelText } = renderPanel();
 		await waitFor(() => expect(weatherConfigStatus).toHaveBeenCalled());
 		const poll = container.querySelector('input[type="number"]') as HTMLInputElement;
 		await waitFor(() => expect(poll.value).toBe('15'));
-		const unit = container.querySelector('select') as HTMLSelectElement;
+		const unit = getByLabelText('Units') as HTMLSelectElement;
 		expect(unit.value).toBe('celsius');
+	});
+
+	it('offers exactly the two providers with the wire values', () => {
+		const { getByLabelText } = renderPanel();
+		const options = Array.from((getByLabelText('Weather provider') as HTMLSelectElement).options);
+		expect(options.map((o) => [o.value, o.textContent])).toEqual([
+			['open-meteo', 'Open-Meteo'],
+			['met-no', 'MET Norway (met.no)']
+		]);
+	});
+
+	it('prefills met-no, shows its hint and drops the Open-Meteo help', async () => {
+		vi.mocked(weatherConfigStatus).mockResolvedValue({
+			configured: true,
+			latitude: 59.9,
+			longitude: 10.7,
+			unit: 'celsius',
+			pollSeconds: 900,
+			provider: 'met-no'
+		});
+		const { getByLabelText, getByText, queryByText } = renderPanel();
+		const select = getByLabelText('Weather provider') as HTMLSelectElement;
+		await waitFor(() => expect(select.value).toBe('met-no'));
+		expect(getByText(/Data: MET Norway/)).toBeTruthy();
+		expect(select.getAttribute('aria-describedby')).toBe('weather-metno-hint');
+		expect(queryByText(/open-meteo\.com/)).toBeNull();
+	});
+
+	it.each([[undefined], ['bogus'], ['']])(
+		'falls back to Open-Meteo for provider %j',
+		async (provider) => {
+			vi.mocked(weatherConfigStatus).mockResolvedValue({
+				configured: true,
+				latitude: 1,
+				longitude: 2,
+				unit: 'celsius',
+				pollSeconds: 900,
+				provider
+			});
+			const { getByLabelText } = renderPanel();
+			await waitFor(() => expect(weatherConfigStatus).toHaveBeenCalled());
+			await act(async () => {});
+			expect((getByLabelText('Weather provider') as HTMLSelectElement).value).toBe('open-meteo');
+		}
+	);
+
+	it('shows the met.no hint only while met-no is selected', async () => {
+		const { getByLabelText, queryByText } = renderPanel();
+		await waitFor(() => expect(weatherConfigStatus).toHaveBeenCalled());
+		const select = getByLabelText('Weather provider');
+		expect(queryByText(/remaining hours/)).toBeNull();
+		fireEvent.change(select, { target: { value: 'met-no' } });
+		expect(queryByText(/remaining hours/)).toBeTruthy();
+		fireEvent.change(select, { target: { value: 'open-meteo' } });
+		expect(queryByText(/remaining hours/)).toBeNull();
+	});
+
+	it('clears "Saved ✓" when the provider changes', async () => {
+		const { getByLabelText, getByRole, findByText, queryByText } = renderPanel();
+		await waitFor(() => expect(weatherConfigStatus).toHaveBeenCalled());
+		await act(async () => {});
+		fireEvent.click(getByRole('button', { name: /Save & fetch/ }));
+		expect(await findByText('Saved ✓')).toBeTruthy();
+		fireEvent.change(getByLabelText('Weather provider'), { target: { value: 'met-no' } });
+		expect(queryByText('Saved ✓')).toBeNull();
+	});
+
+	it('saves the chosen provider then restarts the task', async () => {
+		const { getByLabelText, getByRole } = renderPanel();
+		await waitFor(() => expect(weatherConfigStatus).toHaveBeenCalled());
+		await act(async () => {});
+		fireEvent.change(getByLabelText('Weather provider'), { target: { value: 'met-no' } });
+		fireEvent.click(getByRole('button', { name: /Save & fetch/ }));
+		await waitFor(() =>
+			expect(saveWeatherConfig).toHaveBeenCalledWith({
+				latitude: 51.5072,
+				longitude: -0.1276,
+				unit: 'fahrenheit',
+				pollSeconds: 1800,
+				provider: 'met-no'
+			})
+		);
+		await waitFor(() => expect(weatherReconnect).toHaveBeenCalled());
+		expect(vi.mocked(saveWeatherConfig).mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(weatherReconnect).mock.invocationCallOrder[0]
+		);
 	});
 });
 

@@ -1,7 +1,7 @@
 import { useSettingsOperations } from './useSettingsOperations';
 // The Weather plugin's settings pane (studio → Plugins → Weather). A container (AGENTS.md §6): owns
-// the form state, drives the Tauri commands via weather-commands.ts. Open-Meteo is keyless, so this is
-// just a location + units + refresh form. The live badge reads the `weather.status` telemetry sample
+// the form state, drives the Tauri commands via weather-commands.ts. Both providers (Open-Meteo, MET
+// Norway) are keyless, so this is just a location + units + refresh + provider form. The live badge reads the `weather.status` telemetry sample
 // through the hub, the same path meters use. Reuses the shared `has-*` settings styling.
 import { useEffect, useState } from 'react';
 import { useTelemetryHub } from '../telemetryContext';
@@ -13,6 +13,7 @@ import {
 	weatherConnect,
 	weatherReconnect
 } from './weather-commands';
+import type { WeatherProvider } from './weather-types';
 
 export default function WeatherSettings() {
 	const hub = useTelemetryHub();
@@ -24,6 +25,7 @@ export default function WeatherSettings() {
 	const [lon, setLon] = useState('');
 	const [unit, setUnit] = useState('celsius');
 	const [poll, setPoll] = useState(15); // minutes (the backend stores seconds)
+	const [provider, setProvider] = useState<WeatherProvider>('open-meteo');
 	const [configured, setConfigured] = useState(false);
 	const { saving, saved, error: saveError, invalidate, capture, save } = useSettingsOperations();
 
@@ -37,6 +39,7 @@ export default function WeatherSettings() {
 				setLat(s.latitude ? String(s.latitude) : '');
 				setLon(s.longitude ? String(s.longitude) : '');
 				setUnit(s.unit || 'celsius');
+				setProvider(s.provider === 'met-no' ? 'met-no' : 'open-meteo');
 				setPoll(Math.round((s.pollSeconds || 900) / 60));
 				setConfigured(s.configured);
 			})
@@ -63,7 +66,8 @@ export default function WeatherSettings() {
 					latitude: latN,
 					longitude: lonN,
 					unit,
-					pollSeconds: Math.max(5, poll) * 60
+					pollSeconds: Math.max(5, poll) * 60,
+					provider
 				});
 				await weatherReconnect();
 			},
@@ -80,12 +84,35 @@ export default function WeatherSettings() {
 				<span className="has-state-dim">{configured ? 'configured' : 'not configured'}</span>
 			</div>
 
+			<div className="rp-hd">Provider</div>
+			<label className="has-field">
+				Weather provider
+				<select
+					value={provider}
+					aria-describedby={provider === 'met-no' ? 'weather-metno-hint' : undefined}
+					onChange={(e) => {
+						setProvider(e.currentTarget.value as WeatherProvider);
+						dirtied();
+					}}
+				>
+					<option value="open-meteo">Open-Meteo</option>
+					<option value="met-no">MET Norway (met.no)</option>
+				</select>
+			</label>
+			{provider === 'met-no' && (
+				<small className="has-help" id="weather-metno-hint">
+					MET Norway does not provide air quality, UV index, feels-like temperature, or sunrise and
+					sunset times. Today’s high and low cover the remaining hours only. Data: MET Norway.
+				</small>
+			)}
+
 			<div className="rp-hd">Location</div>
 			<div className="has-help">
 				{/* Plain text, not a link: an <a href> would navigate the studio webview itself (the
 				    navguard blocks it) and the backend open_url only opens project URLs. */}
-				Weather uses Open-Meteo (open-meteo.com). No API key is needed. Enter the latitude and
-				longitude of your location. Find these values on the Open-Meteo website.
+				{provider === 'met-no'
+					? 'Weather uses MET Norway. No API key is needed. Enter the latitude and longitude of your location. Find these values in a map app.'
+					: 'Weather uses Open-Meteo (open-meteo.com). No API key is needed. Enter the latitude and longitude of your location. Find these values on the Open-Meteo website.'}
 			</div>
 
 			<label className="has-field">

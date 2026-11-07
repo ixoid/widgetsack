@@ -3,13 +3,14 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { COMMANDS } from '../../bridge/contract';
-import type { WeatherStatus } from './weather-types';
+import type { WeatherProvider, WeatherStatus } from './weather-types';
 
 export type WeatherConfigInput = {
 	latitude: number;
 	longitude: number;
 	unit: string;
 	pollSeconds: number;
+	provider: WeatherProvider;
 };
 
 /** The (non-secret) config. */
