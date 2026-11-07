@@ -34,6 +34,7 @@ pub mod display;
 pub mod displaywatch;
 pub mod event;
 mod file_io;
+mod fork;
 pub mod ha;
 pub mod hotkey;
 mod http_response;

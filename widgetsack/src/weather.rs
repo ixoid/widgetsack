@@ -31,6 +31,40 @@ fn default_interval() -> u64 {
 fn default_unit() -> String {
     "celsius".to_string()
 }
+fn default_provider() -> String {
+    "open-meteo".to_string()
+}
+
+/// Normalise a stored/received provider name: "met-no" (trimmed, any case) or else "open-meteo".
+/// A hand-edited unknown value therefore degrades to the upstream behaviour instead of failing.
+pub(crate) fn normalize_provider(s: &str) -> &'static str {
+    if s.trim().eq_ignore_ascii_case("met-no") {
+        "met-no"
+    } else {
+        "open-meteo"
+    }
+}
+
+/// Whether the provider has a separate air-quality endpoint (Open-Meteo only). Pure.
+fn wants_air(provider: &str) -> bool {
+    normalize_provider(provider) != "met-no"
+}
+
+/// Map a forecast body with the provider's mapper. Pure. `utc_offset_secs` only matters to met.no
+/// (Open-Meteo already groups days in the location's zone).
+fn pick_samples(
+    provider: &str,
+    body: &Value,
+    letter: &str,
+    ts_ms: u64,
+    utc_offset_secs: i64,
+) -> Vec<SensorSample> {
+    if normalize_provider(provider) == "met-no" {
+        crate::fork::weather_metno::metno_to_samples(body, letter, ts_ms, utc_offset_secs)
+    } else {
+        weather_to_samples(body, letter, ts_ms)
+    }
+}
 
 /// Server-side weather config (`plugins/weather.json`). Open-Meteo is keyless, so nothing is secret.
 /// `#[serde(default)]` everywhere so a partial file parses.
@@ -45,6 +79,10 @@ pub struct WeatherConfig {
     pub unit: String,
     #[serde(default = "default_interval")]
     pub poll_interval_secs: u64,
+    /// "open-meteo" | "met-no". A String, not an enum: an enum would fail the WHOLE file on a
+    /// hand-edited value. Read through `normalize_provider`.
+    #[serde(default = "default_provider")]
+    pub provider: String,
 }
 
 /// What the webview learns about the config (all non-secret). camelCase on the wire.
@@ -56,6 +94,8 @@ pub struct WeatherStatus {
     pub longitude: f64,
     pub unit: String,
     pub poll_seconds: u64,
+    /// Always normalised: "open-meteo" | "met-no".
+    pub provider: String,
 }
 
 /// Managed state: the running poll task.
@@ -204,7 +244,7 @@ fn weather_to_samples(body: &Value, unit_letter: &str, ts_ms: u64) -> Vec<Sensor
 }
 
 /// The single-character unit letter the meter shows ('F' for fahrenheit, else 'C'). Pure.
-fn unit_letter(unit: &str) -> &'static str {
+pub(crate) fn unit_letter(unit: &str) -> &'static str {
     if unit.eq_ignore_ascii_case("fahrenheit") {
         "F"
     } else {
@@ -278,7 +318,12 @@ pub async fn run_weather_client<R: Runtime>(app: AppHandle<R>, cfg: WeatherConfi
     if let Some(state) = app.try_state::<WeatherState>() {
         state.latest.clear();
     }
-    let client = match http_client() {
+    let metno = normalize_provider(&cfg.provider) == "met-no";
+    let client = match if metno {
+        crate::fork::weather_metno::metno_client()
+    } else {
+        http_client()
+    } {
         Ok(c) => c,
         Err(err) => {
             eprintln!("weather: client build failed: {err}");
@@ -287,8 +332,12 @@ pub async fn run_weather_client<R: Runtime>(app: AppHandle<R>, cfg: WeatherConfi
         }
     };
     let interval = Duration::from_secs(cfg.poll_interval_secs.clamp(MIN_INTERVAL, MAX_INTERVAL));
-    let url = open_meteo_url(cfg.latitude, cfg.longitude, &cfg.unit);
-    let air_url = air_quality_url(cfg.latitude, cfg.longitude);
+    let url = if metno {
+        crate::fork::weather_metno::metno_url(cfg.latitude, cfg.longitude)
+    } else {
+        open_meteo_url(cfg.latitude, cfg.longitude, &cfg.unit)
+    };
+    let air_url = wants_air(&cfg.provider).then(|| air_quality_url(cfg.latitude, cfg.longitude));
     let letter = unit_letter(&cfg.unit);
     let located = has_location(&cfg);
     let timings = app.state::<crate::timings::SubsystemTimings>();
@@ -305,12 +354,24 @@ pub async fn run_weather_client<R: Runtime>(app: AppHandle<R>, cfg: WeatherConfi
             emit_status(&app, "connecting");
             idle = false;
         }
-        match fetch_forecast(&client, &url).await {
-            Ok(json) => {
+        let fetched = if metno {
+            crate::fork::weather_metno::fetch(&client, &url).await
+        } else {
+            fetch_forecast(&client, &url).await.map(|v| (v, None))
+        };
+        let mut fresh_for = None;
+        match fetched {
+            Ok((json, fresh)) => {
+                fresh_for = fresh;
                 {
                     // Time the CPU work (parse + emit) only — the fetch above is network wait.
                     let _t = timings.start("plugin.weather");
-                    let batch = weather_to_samples(&json, letter, now_ms());
+                    let offset = if metno {
+                        crate::fork::weather_metno::local_utc_offset_secs()
+                    } else {
+                        0
+                    };
+                    let batch = pick_samples(&cfg.provider, &json, letter, now_ms(), offset);
                     if !batch.is_empty() {
                         emit_batch(&app, &batch);
                     }
@@ -319,7 +380,9 @@ pub async fn run_weather_client<R: Runtime>(app: AppHandle<R>, cfg: WeatherConfi
                 fails = 0;
                 // Air quality is a SEPARATE Open-Meteo endpoint — best-effort, so a failure here never
                 // affects the (already-emitted) forecast. Only the parse/emit is timed (fetch is wait).
-                if let Ok(air) = fetch_forecast(&client, &air_url).await {
+                if let Some(air_url) = &air_url
+                    && let Ok(air) = fetch_forecast(&client, air_url).await
+                {
                     let _t = timings.start("plugin.weather");
                     let batch = air_to_samples(&air, now_ms());
                     if !batch.is_empty() {
@@ -340,6 +403,10 @@ pub async fn run_weather_client<R: Runtime>(app: AppHandle<R>, cfg: WeatherConfi
                 .saturating_mul(1u32 << fails.min(4))
                 .min(Duration::from_secs(MAX_INTERVAL))
         };
+        // met.no's `Expires` is a floor on the next poll (never shorter than the configured wait).
+        let wait = wait
+            .max(fresh_for.unwrap_or_default())
+            .min(Duration::from_secs(MAX_INTERVAL));
         tokio::time::sleep(wait).await;
     }
 }
@@ -356,6 +423,7 @@ pub async fn save_weather_config(
     longitude: f64,
     unit: String,
     poll_seconds: u64,
+    provider: Option<String>,
 ) -> Result<(), String> {
     if window.label() != "studio" {
         return Err("save_weather_config is only allowed from the studio window".into());
@@ -373,6 +441,7 @@ pub async fn save_weather_config(
             unit
         },
         poll_interval_secs: poll_seconds.clamp(MIN_INTERVAL, MAX_INTERVAL),
+        provider: normalize_provider(provider.as_deref().unwrap_or("")).to_string(),
     };
     let txt = serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
     crate::file_io::atomic_write(&path, &txt)
@@ -393,6 +462,7 @@ pub async fn weather_config_status<R: Runtime>(app: AppHandle<R>) -> Result<Weat
             longitude: cfg.longitude,
             unit: cfg.unit,
             poll_seconds: cfg.poll_interval_secs,
+            provider: normalize_provider(&cfg.provider).to_string(),
         }),
         None => Ok(WeatherStatus {
             configured: false,
@@ -400,6 +470,7 @@ pub async fn weather_config_status<R: Runtime>(app: AppHandle<R>) -> Result<Weat
             longitude: 0.0,
             unit: default_unit(),
             poll_seconds: default_interval(),
+            provider: default_provider(),
         }),
     }
 }
@@ -425,6 +496,7 @@ pub async fn weather_connect<R: Runtime>(
                 longitude: 0.0,
                 unit: default_unit(),
                 poll_interval_secs: default_interval(),
+                provider: default_provider(),
             });
             let app_for_task = app.clone();
 
@@ -478,6 +550,7 @@ mod tests {
             longitude: lo,
             unit: "celsius".into(),
             poll_interval_secs: 900,
+            provider: default_provider(),
         };
         assert!(!has_location(&at(0.0, 0.0)));
         assert!(has_location(&at(51.5, 0.0)));
@@ -618,8 +691,10 @@ mod tests {
             longitude: -0.12,
             unit: "celsius".into(),
             poll_seconds: 900,
+            provider: "met-no".into(),
         })
         .unwrap();
+        assert_eq!(v["provider"], "met-no");
         assert_eq!(v["pollSeconds"], 900);
         assert_eq!(v["latitude"], 51.5);
         assert!(v.get("api_key").is_none() && v.get("apiKey").is_none());
@@ -631,5 +706,52 @@ mod tests {
             serde_json::from_str(r#"{ "latitude": 51.5, "longitude": -0.1 }"#).unwrap();
         assert_eq!(cfg.unit, "celsius");
         assert_eq!(cfg.poll_interval_secs, 900);
+    }
+
+    #[test]
+    fn provider_defaults_to_open_meteo_and_tolerates_junk() {
+        let cfg: WeatherConfig = serde_json::from_str(r#"{ "latitude": 1.0 }"#).unwrap();
+        assert_eq!(cfg.provider, "open-meteo");
+        // A hand-edited value must not fail the whole file.
+        let cfg: WeatherConfig =
+            serde_json::from_str(r#"{ "latitude": 1.0, "provider": "banana" }"#).unwrap();
+        assert_eq!(normalize_provider(&cfg.provider), "open-meteo");
+        // met-no round-trips.
+        let cfg: WeatherConfig =
+            serde_json::from_str(r#"{ "latitude": 1.0, "provider": "met-no" }"#).unwrap();
+        let back: WeatherConfig =
+            serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(back.provider, "met-no");
+    }
+
+    #[test]
+    fn normalize_provider_cases() {
+        assert_eq!(normalize_provider("met-no"), "met-no");
+        assert_eq!(normalize_provider("  MET-NO "), "met-no");
+        assert_eq!(normalize_provider("open-meteo"), "open-meteo");
+        assert_eq!(normalize_provider(""), "open-meteo");
+        assert_eq!(normalize_provider("metno"), "open-meteo");
+    }
+
+    #[test]
+    fn air_quality_is_skipped_for_met_no_only() {
+        assert!(!wants_air("met-no"));
+        assert!(wants_air("open-meteo"));
+        assert!(wants_air("banana"));
+    }
+
+    #[test]
+    fn pick_samples_dispatches_on_provider() {
+        let om = pick_samples("open-meteo", &sample_body(), "C", 1, 0);
+        assert!(find(&om, "weather.apparent").is_some());
+        // An Open-Meteo body fed to met.no (wrong shape) yields nothing, not Open-Meteo values.
+        assert!(pick_samples("met-no", &sample_body(), "C", 1, 0).is_empty());
+        let mn: Value =
+            serde_json::from_str(include_str!("../test-data/metno-compact.json")).unwrap();
+        let s = pick_samples("met-no", &mn, "C", 1_794_063_600_000, 0);
+        assert!(find(&s, "weather.temp").is_some());
+        assert!(find(&s, "weather.apparent").is_none());
+        // An Open-Meteo-shaped call on a met.no body yields nothing too.
+        assert!(pick_samples("open-meteo", &mn, "C", 1, 0).is_empty());
     }
 }

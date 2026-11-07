@@ -123,6 +123,8 @@ windows = { version = "0.62", features = [
     # Recycle Bin contents (recyclebin.rs): SHQueryRecycleBinW → item count + total size.
     "Win32_UI_Shell",
     "Win32_System_Threading",
+    # Local UTC offset for met.no day grouping (fork/weather_metno.rs): GetTimeZoneInformation.
+    "Win32_System_Time",
     "Win32_System_JobObjects",
     "Win32_Graphics_Dwm",
     "Media",
