@@ -28,7 +28,14 @@ Tauri 2 (Rust 2024, crate `widgetsack/`) + React 19/TS/Vite (`client/`), Windows
 - 2026-11-07: **H-1 HWiNFO hardware sensors** built on `feat/H-1-hwinfo` (lane 1 of 2, bus `H-1-20261107-2106`): `widgetsack/src/fork/hwinfo/{mod,model,shared_mem,registry}.rs` — demand-gated `hw.*` source reading HWiNFO's shared memory when it is on, else the gadget/VSB registry mirror (what the owner's machine actually exposes: `EnableVSB=1`, shared memory off); well-known `hw.cpu.temp` / `hw.cpu.clock.max` / `hw.cpu.clock.core.N` / `hw.cpu.power` from HWiNFO labels, `hw.<slug>` for ticked readings; client plugin `client/src/lib/widgets/fork/hwinfo/` (Plugins → Hardware (HWiNFO): status, reading picker, poll interval); ADR `docs/decisions/003-hwinfo-sensor-source.md`; `Win32_System_Memory` feature. Core touches: one `.manage` + four command lines in `main.rs`, one `prime_window` line in `sensors.rs`, one `BUILTINS` entry, four `contract.ts` names.
 
 ## In progress
-- `feat/H-1-hwinfo` (HWiNFO) and `feat/S-1-server-check` run as parallel lanes (owner decision 2026-11-07); both await the owner's merge. The stage-0 decisions (camera CSP policy, calendar provider) are still open — see `docs/dev/fork-stage0-plan.md`.
+- Nothing in flight. Session 2026-11-07 (night) closed with everything merged and pushed (`origin/main` = e984ba0).
+
+## State at the end of 2026-11-07
+- In `main`: W-1 met.no, S-1 server check (ADR-002), H-1 HWiNFO (ADR-003), W-2 daily extremes, K-1 agendaplus, the three LOW backlog fixes. Full `npm run test:coverage` is green on the owner's ru-RU machine (no AiUsage exclusions any more); `cargo test` 536.
+- The overlay on the owner's screen is the DEV build (`work/tauri-dev.ps1` → `tauri dev` without `--multi`, Vite on 1420, auto-rebuilt on Rust edits); its config is the release config dir. The owner will NOT install the NSIS release until development is finished — verify on dev. Screenshot of the overlay monitor: PowerShell `CopyFromScreen(1406, 2160, …, 2560×720)`.
+- Live layout snapshot rule is in force (`scripts/snapshot-layout.ps1`, CLAUDE.md § Plan management). Live layout 22:04: CPU card on `hw.cpu.clock.max`/`hw.cpu.temp` (verified live), Servers card (`plugins/server-check.json`: router icmp, 1.1.1.1 tcp 443, cloudflare trace http — placeholders the owner will replace with the VPS), three tickers USD/RUB, EUR/RUB, BTC/USD in a row next to the clock — EMPTY until T-1 (Yahoo Finance times out from the owner's network; cbr-xml-daily.ru and api.binance.com answer).
+- Lane worktrees `.claude/worktrees/agent-*` are left in place (clean, branches merged); safe to `git worktree remove`.
+- Next (owner's word needed): T-1 ticker provider (new outbound hosts), then C-1 camera (owner at the keyboard), W-3, P-1. The `/feature` pipeline run inside a fork lane has no subagents — run a separate security+QA review before merging (CLAUDE.md § Gotchas).
 
 ## Known constraints
 - Windows-only build; ICMP from the agent sandbox is blind (use the overlay itself or TCP probes).
