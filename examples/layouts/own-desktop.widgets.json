@@ -38,18 +38,18 @@
                   "name": "Weather",
                   "size": {
                     "w": 440,
-                    "h": 300
+                    "h": 236
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-weather-root",
                     "kind": "col",
-                    "pad": 16,
-                    "gap": 8,
+                    "pad": 14,
+                    "gap": 4,
                     "children": [
                       {
                         "id": "weather-slot",
-                        "basis": 268,
+                        "basis": 204,
                         "unit": {
                           "id": "weather",
                           "type": "weather",
@@ -57,14 +57,14 @@
                             "x": 0,
                             "y": 0,
                             "w": 408,
-                            "h": 268
+                            "h": 204
                           },
                           "config": {
                             "showHiLo": false,
                             "showDetail": true,
                             "forecastDays": 5
                           },
-                          "css": "--wx-temp-size: 2.4em; --wx-icon-size: 2.8em; --wx-cond-size: 14px; --wx-detail-size: 13px; --wx-gap: 6px; .wx-forecast { flex-direction: column; gap: 2px; margin-top: 8px; } .wx-day { flex-direction: row; align-items: center; justify-content: space-between; text-align: left; gap: 12px; padding: 2px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); } .wx-day:first-child { border-top: 0; } .wx-day-label { flex: 0 0 72px; text-align: left; font-size: 13px; letter-spacing: 0.04em; } .wx-day-icon { flex: 0 0 36px; text-align: left; font-size: 1.35em; } .wx-day-hilo { margin-left: auto; } .wx-day-hilo { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; gap: 12px; font-size: 16px; line-height: 22px; } .wx-day-hi { font-weight: 700; color: var(--np-fg); } .wx-day-hi::before { content: \"↑ \"; font-weight: 400; color: var(--np-accent); } .wx-day-lo::before { content: \"↓ \"; color: var(--np-label); } .wx-day-lo { color: var(--np-label); }"
+                          "css": "--wx-temp-size: 2.1em; --wx-icon-size: 2.4em; --wx-cond-size: 13px; --wx-detail-size: 12px; --wx-gap: 3px; justify-content: flex-start; .wx-forecast { flex-direction: column; gap: 0; margin-top: 6px; } .wx-day { flex-direction: row; align-items: center; text-align: left; gap: 10px; padding: 1px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); } .wx-day:first-child { border-top: 0; } .wx-day-label { flex: 0 0 64px; text-align: left; font-size: 12px; line-height: 20px; letter-spacing: 0.04em; } .wx-day-icon { flex: 0 0 30px; text-align: left; font-size: 1.15em; line-height: 1; } .wx-day-hilo { margin-left: auto; flex: 0 0 auto; flex-wrap: nowrap; gap: 10px; font-size: 15px; line-height: 20px; } .wx-day-hi { font-weight: 700; color: var(--np-fg); } .wx-day-hi::before { content: \"↑ \"; font-weight: 400; color: var(--np-accent); } .wx-day-lo { color: var(--np-label); } .wx-day-lo::before { content: \"↓ \"; }"
                         }
                       }
                     ]
