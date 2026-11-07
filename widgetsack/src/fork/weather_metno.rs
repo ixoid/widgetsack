@@ -497,6 +497,80 @@ pub fn metno_to_samples(
     out
 }
 
+/// Today's running temperature extremes, carried by the worker between polls. The met.no series
+/// starts at the current hour, so one response only knows the rest of the day and "today's high" in
+/// the evening would otherwise shrink to the remaining hours. Each poll folds in what it saw (the
+/// forecast high/low AND the current temperature, which can lie outside the forecast's range) and
+/// the memory resets when the local day changes. Values are in the worker's display unit: a unit
+/// or provider change restarts the worker, which starts with an empty memory, so no mixing.
+/// Known limit: the memory only reaches back to the worker start, so the first evening after an
+/// app launch is still partial (ADR-001, open rule 2).
+#[derive(Debug, Default, PartialEq)]
+pub struct DayExtremes {
+    day: Option<i64>,
+    high: Option<f64>,
+    low: Option<f64>,
+}
+
+fn scalar_of(batch: &[SensorSample], id: &str) -> Option<f64> {
+    batch
+        .iter()
+        .find(|s| s.sensor == id)
+        .and_then(|s| match s.value {
+            crate::sensors::SensorValue::Scalar(v) if v.is_finite() => Some(v),
+            _ => None,
+        })
+}
+
+/// Replace `id`'s scalar in the batch, or append it (stamped like the batch's first sample) when the
+/// mapper did not emit it this poll (e.g. a body fetched just before midnight has no "today").
+fn put_scalar(batch: &mut Vec<SensorSample>, id: &str, v: f64) {
+    match batch.iter_mut().find(|s| s.sensor == id) {
+        Some(s) => s.value = crate::sensors::SensorValue::Scalar(v),
+        None => {
+            let ts_ms = batch.first().map_or(0, |s| s.ts_ms);
+            batch.push(SensorSample::scalar(id.to_string(), ts_ms, v));
+        }
+    }
+}
+
+impl DayExtremes {
+    /// Fold this poll's `weather.temp` / `weather.high` / `weather.low` into the memory, then
+    /// rewrite `weather.high`, `weather.low`, `weather.day.0.high` and `weather.day.0.low` in the
+    /// batch with the day's running extremes. An empty batch (malformed body) is left alone and does
+    /// not touch the memory, so a bad poll cannot reset the day.
+    pub fn carry(&mut self, batch: &mut Vec<SensorSample>, now_secs: i64, utc_offset_secs: i64) {
+        if batch.is_empty() {
+            return;
+        }
+        let day = local_day(now_secs, utc_offset_secs);
+        if self.day != Some(day) {
+            *self = DayExtremes {
+                day: Some(day),
+                high: None,
+                low: None,
+            };
+        }
+        let seen = [
+            scalar_of(batch, "weather.temp"),
+            scalar_of(batch, "weather.high"),
+            scalar_of(batch, "weather.low"),
+        ];
+        for v in seen.into_iter().flatten() {
+            self.high = Some(self.high.map_or(v, |h| h.max(v)));
+            self.low = Some(self.low.map_or(v, |l| l.min(v)));
+        }
+        if let Some(h) = self.high {
+            put_scalar(batch, "weather.high", h);
+            put_scalar(batch, "weather.day.0.high", h);
+        }
+        if let Some(l) = self.low {
+            put_scalar(batch, "weather.low", l);
+            put_scalar(batch, "weather.day.0.low", l);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -998,5 +1072,177 @@ mod tests {
         assert!(val(&s, "weather.is_day").is_none());
         // Temperature is independent of the symbol.
         assert_eq!(num_of(&s, "weather.temp"), 4.0);
+    }
+
+    // ---- DayExtremes (W-2): today's high/low carried across polls ----
+
+    /// Poll `body` at UTC hour `h` of 2026-11-07 (UTC grouping), carrying `mem`.
+    fn poll(mem: &mut DayExtremes, body: &Value, h: i64, letter: &str) -> Vec<SensorSample> {
+        let now = days_from_civil(2026, 11, 7) * 86_400 + h * 3600;
+        let mut batch = metno_to_samples(body, letter, (now * 1000) as u64, 0);
+        mem.carry(&mut batch, now, 0);
+        batch
+    }
+
+    #[test]
+    fn evening_poll_keeps_the_afternoon_high_and_lets_the_low_fall() {
+        let mut mem = DayExtremes::default();
+        // Noon: 5° now, 2° at 18:00 → high 5, low 2.
+        let noon = poll(
+            &mut mem,
+            &body_at(&[(12, 5.0, "cloudy"), (18, 2.0, "cloudy")]),
+            12,
+            "C",
+        );
+        close(num_of(&noon, "weather.high"), 5.0);
+        close(num_of(&noon, "weather.low"), 2.0);
+        // Evening: the series only has 1° now and 0° at 21:00. Raw mapper says high 1; the
+        // carried reading keeps 5 and takes the new low 0.
+        let body = body_at(&[(18, 1.0, "cloudy"), (21, 0.0, "cloudy")]);
+        let raw = metno_to_samples(
+            &body,
+            "C",
+            (days_from_civil(2026, 11, 7) * 86_400 + 18 * 3600) as u64 * 1000,
+            0,
+        );
+        close(num_of(&raw, "weather.high"), 1.0);
+        let eve = poll(&mut mem, &body, 18, "C");
+        close(num_of(&eve, "weather.high"), 5.0);
+        close(num_of(&eve, "weather.low"), 0.0);
+        // day.0 mirrors the headline values.
+        close(num_of(&eve, "weather.day.0.high"), 5.0);
+        close(num_of(&eve, "weather.day.0.low"), 0.0);
+        // Tomorrow is untouched by the memory.
+        let two_days = body_at(&[(18, 1.0, "cloudy"), (30, 9.0, "cloudy")]);
+        let s = poll(&mut mem, &two_days, 18, "C");
+        close(num_of(&s, "weather.day.1.high"), 9.0);
+    }
+
+    #[test]
+    fn current_temperature_outside_the_forecast_range_widens_the_extremes() {
+        let mut mem = DayExtremes::default();
+        // Instant 7° at 12:00 and the rest of the day at 5°: mapper high is 7 already (instant
+        // temps feed the day), so make the memory see a warmer earlier poll instead.
+        poll(
+            &mut mem,
+            &body_at(&[(9, 8.5, "cloudy"), (12, 5.0, "cloudy")]),
+            9,
+            "C",
+        );
+        let s = poll(
+            &mut mem,
+            &body_at(&[(12, 5.0, "cloudy"), (15, 4.0, "cloudy")]),
+            12,
+            "C",
+        );
+        close(num_of(&s, "weather.high"), 8.5);
+        close(num_of(&s, "weather.low"), 4.0);
+    }
+
+    #[test]
+    fn memory_resets_at_local_midnight() {
+        let mut mem = DayExtremes::default();
+        poll(
+            &mut mem,
+            &body_at(&[(12, 9.0, "cloudy"), (18, 3.0, "cloudy")]),
+            12,
+            "C",
+        );
+        // 00:30 next day (UTC grouping): yesterday's 9° must not leak into the new day.
+        let next = body_at(&[(24, 1.0, "cloudy"), (30, 2.0, "cloudy")]);
+        let now = days_from_civil(2026, 11, 8) * 86_400 + 1800;
+        let mut batch = metno_to_samples(&next, "C", (now * 1000) as u64, 0);
+        mem.carry(&mut batch, now, 0);
+        close(num_of(&batch, "weather.high"), 2.0);
+        close(num_of(&batch, "weather.low"), 1.0);
+    }
+
+    #[test]
+    fn midnight_follows_the_local_offset_not_utc() {
+        // 22:30 UTC on Nov 7 is already 01:30 Nov 8 in MSK: with the MSK offset the memory from a
+        // Nov 7 poll is dropped; with UTC it is kept.
+        let day7 = body_at(&[(12, 9.0, "cloudy"), (18, 3.0, "cloudy")]);
+        let late = body_at(&[(22, 1.0, "cloudy"), (23, 2.0, "cloudy")]);
+        let t12 = days_from_civil(2026, 11, 7) * 86_400 + 12 * 3600;
+        let t2230 = days_from_civil(2026, 11, 7) * 86_400 + 22 * 3600 + 1800;
+        for (offset, expect_high) in [(MSK, 2.0), (0, 9.0)] {
+            let mut mem = DayExtremes::default();
+            let mut b1 = metno_to_samples(&day7, "C", (t12 * 1000) as u64, offset);
+            mem.carry(&mut b1, t12, offset);
+            let mut b2 = metno_to_samples(&late, "C", (t2230 * 1000) as u64, offset);
+            mem.carry(&mut b2, t2230, offset);
+            close(num_of(&b2, "weather.high"), expect_high);
+        }
+    }
+
+    #[test]
+    fn memory_works_in_display_units_without_reconverting() {
+        let mut mem = DayExtremes::default();
+        let f1 = poll(
+            &mut mem,
+            &body_at(&[(12, 10.0, "cloudy"), (18, 2.0, "cloudy")]),
+            12,
+            "F",
+        );
+        close(num_of(&f1, "weather.high"), 50.0);
+        let f2 = poll(
+            &mut mem,
+            &body_at(&[(18, 2.0, "cloudy"), (21, 1.0, "cloudy")]),
+            18,
+            "F",
+        );
+        close(num_of(&f2, "weather.high"), 50.0);
+        close(num_of(&f2, "weather.low"), 1.0 * 9.0 / 5.0 + 32.0);
+    }
+
+    #[test]
+    fn empty_batch_does_not_touch_the_memory_and_missing_today_is_filled_from_it() {
+        let mut mem = DayExtremes::default();
+        poll(
+            &mut mem,
+            &body_at(&[(12, 9.0, "cloudy"), (18, 3.0, "cloudy")]),
+            12,
+            "C",
+        );
+        let before = format!("{mem:?}");
+        let mut empty: Vec<SensorSample> = Vec::new();
+        mem.carry(
+            &mut empty,
+            days_from_civil(2026, 11, 7) * 86_400 + 13 * 3600,
+            0,
+        );
+        assert!(empty.is_empty());
+        assert_eq!(format!("{mem:?}"), before);
+        // A body whose entries all lie in tomorrow (fetched before midnight, mapped after): the
+        // mapper emits no weather.high; the memory supplies today's values, stamped like the batch.
+        let tomorrow_only = body_at(&[(26, 1.0, "cloudy"), (30, 2.0, "cloudy")]);
+        let now = days_from_civil(2026, 11, 7) * 86_400 + 23 * 3600;
+        let mut batch = metno_to_samples(&tomorrow_only, "C", (now * 1000) as u64, 0);
+        assert!(val(&batch, "weather.high").is_none());
+        mem.carry(&mut batch, now, 0);
+        close(num_of(&batch, "weather.high"), 9.0);
+        close(num_of(&batch, "weather.day.0.low"), 1.0); // temp 1.0 is "now", folded in
+        let high = batch.iter().find(|s| s.sensor == "weather.high").unwrap();
+        assert_eq!(high.ts_ms, batch[0].ts_ms);
+    }
+
+    #[test]
+    fn fresh_memory_is_transparent_on_the_fixture() {
+        // One poll with an empty memory must equal the raw mapper output, except that the current
+        // temperature is folded into high/low (it is the first instant, so already inside the range).
+        let raw = metno_to_samples(&fixture(), "C", POLL_MS, MSK);
+        let mut mem = DayExtremes::default();
+        let mut carried = metno_to_samples(&fixture(), "C", POLL_MS, MSK);
+        mem.carry(&mut carried, (POLL_MS / 1000) as i64, MSK);
+        assert_eq!(raw.len(), carried.len());
+        for (a, b) in raw.iter().zip(carried.iter()) {
+            assert_eq!(a.sensor, b.sensor);
+            assert_eq!(
+                serde_json::to_value(a).unwrap(),
+                serde_json::to_value(b).unwrap(),
+                "{}",
+                a.sensor
+            );
+        }
     }
 }
