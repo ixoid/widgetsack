@@ -38,7 +38,7 @@
 ```
 /feature Server check (brief stage 1): a Rust fork source widgetsack/src/fork/server_check.rs (IntegrationTask pattern like agenda.rs) with targets configured in Plugins → Server check (name, host, kind icmp|tcp|http, port/url, expected status or keyword, interval default 30 s, timeout), checks via the existing ICMP helper (share it with ping.rs), tokio TcpStream connect with timeout, and the service_health client for http; emits srv.<id>.up|ms|status|lastDown and srv.status; a `servercheck` fork widget renders one card with N rows (dot, name, latency, 20-sample sparkline, "down since"). Optional Windows toast on up→down behind a toggle (new tauri-plugin-notification; ADR). Done when 3 targets show status and latency on the overlay and a pulled target flips within one interval. See docs/dev/fork-stage0-plan.md § Stage 1 for open choices.
 ```
-**Priority:** Phase 1 · **Status:** ✅ built 2026-11-07 on branch `feat/S-1-server-check` (lane run S-1-20261107-2105, ADR-002; toast deferred; awaiting merge + the owner's live-overlay check) · **Depends on:** none · **Est. size/mode:** M · DATA
+**Priority:** Phase 1 · **Status:** ✅ done 2026-11-07, merged into `main` (f53c9f5; lane run S-1-20261107-2105, ADR-002; toast deferred; live-overlay check with three real targets still owed by the owner) · **Depends on:** none · **Est. size/mode:** M · DATA
 
 ## Vector C — Cameras (brief stage 2)
 
@@ -69,7 +69,7 @@
 
 ## Recommended execution order
 1. W-1 — done, in `main`.
-2. H-1 and S-1 — in parallel lanes (owner decision 2026-11-07: two worktrees, `feat/H-1-hwinfo` and `feat/S-1-server-check`).
+2. S-1 — done, in `main`. H-1 — still in its lane (`feat/H-1-hwinfo`).
 3. W-2, K-1 and the LOW backlog items — a third, sequential lane once one of the big lanes frees the machine.
 4. C-1 — after S-1; needs the owner at the keyboard (CSP decision, real camera, go2rtc).
 5. W-3, then P-1.
