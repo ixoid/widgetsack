@@ -207,6 +207,7 @@ ADRs in `docs/decisions/`. **Create a new ADR** when: choosing between libraries
 
 ## 📋 Plan management
 
+- **Снимок живой раскладки перед каждым изменением (правило владельца 2026-11-07).** Владелец правит виджеты и раскладку руками в Studio; результат живёт только в `%APPDATA%\io.github.gyng\widgets.json`, git его не видит. Перед любой задачей, которая трогает виджеты, их meta/config-поля, раскладку или пример в `examples/layouts/`, сначала `.\scripts\snapshot-layout.ps1` (для dev-инстанса `-Multi`) и коммит `chore(layout): snapshot the live overlay layout`. Чтение этого файла владелец разрешил постоянно, это исключение из границы проекта; копировать пример из репо ПОВЕРХ живого файла — только по прямому «да». Коммит, который переименовывает/удаляет config-поле существующего виджета, обязан обновить и пример раскладки в том же коммите.
 - **Minimal footprint:** touch only the files the task needs; новый код — в `fork/`-папках, ядро — только точки регистрации.
 - **Visible progress:** чекбоксы этапов в брифе и в Feature Status выше; тикать по ходу.
 - **Document decisions:** behavior change → ADR; recurring bug pattern → Gotchas rule; one-off bug → BACKLOG.

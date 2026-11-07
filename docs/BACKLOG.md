@@ -30,6 +30,17 @@ or it is blind.
 
 ## MEDIUM
 
+### [owner] Tickers: EUR→RUB, USD→RUB, BTC→USD with a red/green 24h arrow
+- **Severity:** MEDIUM
+- **File:** `examples/layouts/own-desktop.widgets.json` (ticker `ticker-3hpjgi`), `widgetsack/src/stocks.rs:350`, `client/src/lib/widgets/meters/Ticker.tsx:96`
+- **Found by:** owner (2026-11-07, mid-session request)
+- **Feature:** ticker widgets
+- **Date:** 2026-11-07
+- **Status:** open
+- **Description:** the owner wants three tickers on the overlay — rubles per euro, rubles per dollar, bitcoin in USD — each with an arrow showing the day's change, red for down and green for up. The stock `ticker` meter already draws a colour-coded arrow + % change vs Yahoo's previous close, so most of this is configuration. Two gaps: (1) the one ticker in the live layout is configured with symbol `BTC/USD`, which is not a Yahoo symbol (Yahoo wants `BTC-USD`), so it most likely shows nothing; (2) "change over 24 h" is approximated by "vs previous close" — for FX that is the previous trading day (flat over weekends), for BTC it is the previous UTC midnight; the poller fetches `range=1d`, so a true rolling-24h delta would need `range=2d` plus a pure helper.
+- **Fix:** step 1 (config only, after `scripts/snapshot-layout.ps1`): three `ticker` widgets with symbols `EURRUB=X`, `USDRUB=X`, `BTC-USD`, labels «€ → ₽», «$ → ₽», «BTC», `decimals` 2 / 2 / 0; confirm `=` survives `yahoo_chart_url` (only `^` is escaped today — `=` is legal in a URL path) and that Yahoo returns `chartPreviousClose` for `=X` pairs. Step 2 (optional, SPEC): if the owner wants a real 24 h delta, add `stocks.<SYM>.change24h` computed in `quote_to_samples` from a `2d` series, test it without network, and let the ticker bind to it.
+- **Check:** overlay shows three tickers with a price and a coloured arrow for each symbol; `grep -c '"symbol": "BTC/USD"' examples/layouts/own-desktop.widgets.json → 0` after the layout is fixed and re-snapshotted.
+
 ### [qa] Stale Open-Meteo values stay in mounted windows after switching to met.no
 - **Severity:** MEDIUM
 - **File:** `widgetsack/src/weather.rs:319`
