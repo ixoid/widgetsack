@@ -26,7 +26,7 @@
           {
             "id": "col-left",
             "kind": "col",
-            "basis": 440,
+            "basis": 340,
             "gap": 24,
             "align": "stretch",
             "children": [
@@ -37,7 +37,7 @@
                   "kind": "group",
                   "name": "Weather",
                   "size": {
-                    "w": 440,
+                    "w": 340,
                     "h": 236
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
@@ -56,7 +56,7 @@
                           "rect": {
                             "x": 0,
                             "y": 0,
-                            "w": 408,
+                            "w": 312,
                             "h": 204
                           },
                           "config": {
@@ -64,7 +64,7 @@
                             "showDetail": true,
                             "forecastDays": 5
                           },
-                          "css": "--wx-temp-size: 2.1em; --wx-icon-size: 2.4em; --wx-cond-size: 13px; --wx-detail-size: 12px; --wx-gap: 3px; justify-content: flex-start; .wx-forecast { flex-direction: column; gap: 0; margin-top: 6px; } .wx-day { flex-direction: row; align-items: center; text-align: left; gap: 10px; padding: 1px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); } .wx-day:first-child { border-top: 0; } .wx-day-label { flex: 0 0 64px; text-align: left; font-size: 12px; line-height: 20px; letter-spacing: 0.04em; } .wx-day-icon { flex: 0 0 30px; text-align: left; font-size: 1.15em; line-height: 1; } .wx-day-hilo { margin-left: auto; flex: 0 0 auto; flex-wrap: nowrap; gap: 10px; font-size: 15px; line-height: 20px; } .wx-day-hi { font-weight: 700; color: var(--np-fg); } .wx-day-hi::before { content: \"↑ \"; font-weight: 400; color: var(--np-accent); } .wx-day-lo { color: var(--np-label); } .wx-day-lo::before { content: \"↓ \"; }"
+                          "css": "--wx-temp-size: 2.1em; --wx-icon-size: 2.4em; --wx-cond-size: 13px; --wx-detail-size: 12px; --wx-gap: 3px; justify-content: flex-start; .wx-forecast { flex-direction: column; gap: 0; margin-top: 6px; } .wx-day { flex-direction: row; align-items: center; text-align: left; gap: 10px; padding: 1px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); } .wx-day:first-child { border-top: 0; } .wx-day-label { flex: 0 0 64px; text-align: left; font-size: 12px; line-height: 20px; letter-spacing: 0.04em; } .wx-day-icon { flex: 0 0 30px; text-align: left; font-size: 1.15em; line-height: 1; } .wx-day-hilo { flex: 0 0 auto; flex-wrap: nowrap; gap: 10px; margin-left: 6px; font-size: 15px; line-height: 20px; } .wx-day-hi { font-weight: 700; color: var(--np-fg); } .wx-day-hi::before { content: \"↑ \"; font-weight: 400; color: var(--np-accent); } .wx-day-lo { color: var(--np-label); } .wx-day-lo::before { content: \"↓ \"; }"
                         }
                       }
                     ]
@@ -78,7 +78,7 @@
                   "kind": "group",
                   "name": "Uptime & network",
                   "size": {
-                    "w": 440,
+                    "w": 340,
                     "h": 196
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
@@ -98,7 +98,7 @@
                           "rect": {
                             "x": 0,
                             "y": 0,
-                            "w": 408,
+                            "w": 312,
                             "h": 22
                           },
                           "config": {
@@ -117,7 +117,7 @@
                           "rect": {
                             "x": 0,
                             "y": 0,
-                            "w": 408,
+                            "w": 312,
                             "h": 28
                           },
                           "config": {
@@ -139,7 +139,7 @@
                           "rect": {
                             "x": 0,
                             "y": 0,
-                            "w": 408,
+                            "w": 312,
                             "h": 28
                           },
                           "config": {
@@ -161,7 +161,7 @@
                           "rect": {
                             "x": 0,
                             "y": 0,
-                            "w": 408,
+                            "w": 312,
                             "h": 20
                           },
                           "config": {
@@ -181,7 +181,7 @@
                           "rect": {
                             "x": 0,
                             "y": 0,
-                            "w": 408,
+                            "w": 312,
                             "h": 20
                           },
                           "config": {
