@@ -3,9 +3,19 @@
 # Vitest cache (run from repo root)
 /.vite
 settings.json
-.claude/
 # Playwright MCP scratch (screenshots / console logs from interactive browser sessions)
 .playwright-mcp/
 
 # Local development probes, layouts, screenshots and build logs
 /work/
+
+# ---- fork: agentic pipeline layer (Claude Code + ZCode) ----
+
+# Claude Code — транзитное состояние пайплайна и локальные настройки
+.claude/agent-bus/*
+!.claude/agent-bus/.gitkeep
+.claude/settings.local.json
+.claude/worktrees/
+
+# ZCode — планы сессий транзитные; .zcode/config.json коммитится
+.zcode/plans/

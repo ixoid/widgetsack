@@ -1,0 +1,22 @@
+{
+  "//": "Проектная конфигурация ZCode (клиент z.ai / GLM). Хуки из конфиг-файла в ZCode выключены по умолчанию — hooks.enabled обязателен. Хук «граница проекта» (block-process-kill) приезжает плагином pipeline-toolkit и здесь не дублируется. secret-guard — тот же скрипт, что подключён для Claude Code в .claude/settings.json: блокирует (exit 2) команды, трогающие секрет-пути. Форма process (аргументы без шелла) — переносимая между Windows и macOS. Путь относительный: переменной вроде ${CLAUDE_PROJECT_DIR} для конфиг-хуков ZCode в документации нет; что рабочий каталог хука = корень workspace, проверить первой же сессией ZCode пробой `cat ~/.ssh/x` → ожидается блок. Если хук молчит — смотреть лог ZCode (источник, матчер, исход).",
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "PreToolUse": [
+        {
+          "matcher": "Bash",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "node",
+              "args": ["scripts/hooks/secret-guard.mjs"],
+              "timeoutMs": 15000,
+              "statusMessage": "secret-guard: досмотр команды..."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

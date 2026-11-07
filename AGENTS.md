@@ -542,3 +542,36 @@ presentational (pure) components**. Current code already models the key split:
 - [ ] New widget type registered in `registry.tsx` and given `widget.ts` meta?
 - [ ] `npm run lint` clean (zero warnings) and `cargo clippy` clean?
 - [ ] Didn't commit/push unless asked?
+
+---
+
+## 9. Fork layer (ixoid/widgetsack) — read after everything above
+
+This repository is a **personal fork** of `gyng/widgetsack` for a Windows home dashboard. Everything
+above is upstream's guidance and stays authoritative for code style, tests and architecture. The
+fork adds three built-in widget families (server check, RTSP camera via go2rtc, calendar/agenda) and
+an agentic pipeline layer. The fork-specific rules live in:
+
+- [CLAUDE.md](CLAUDE.md) — the fork's source of truth for owner rules, stack facts, gotchas,
+  verification and the `/feature` pipeline. **Read it right after this file.** Claude Code loads it
+  automatically; ZCode (GLM) loads this file, so ZCode sessions must `Read` CLAUDE.md explicitly.
+- [WIDGETSACK_FORK_BRIEF.md](WIDGETSACK_FORK_BRIEF.md) — the owner's brief: scope, stages, open
+  questions, "do not do" list.
+- [docs/dev/fork-architecture-notes.md](docs/dev/fork-architecture-notes.md) — the "map before
+  code": where widget types register, how telemetry/demand gating works, where config and secrets
+  live. Written during stage 0.
+
+Owner rules that override nothing above but bind every session in this repo:
+
+- **Talk to the owner in Russian.** Code, comments, commit messages and identifiers stay English.
+- **Project boundary.** Nothing outside this folder (processes, files, environment, registry,
+  devices) without the owner's explicit "yes" in the chat. Never stop processes you did not start;
+  a busy port means pick another port.
+- **Minimal core intrusion.** New code goes to `client/src/lib/widgets/fork/*` and
+  `widgetsack/src/fork/*`; the core gets registration points only, so `git merge upstream/main`
+  stays cheap. Tag `upstream-base` marks the forked commit.
+- **Secrets never enter git** — camera passwords, feed URLs with tokens, go2rtc config with
+  credentials. Use the existing `secure_config` (DPAPI) path; commit `*.example.*` templates only.
+- **Features go through the pipeline** (`/feature`, agents in `~/.claude/agents` or the ZCode
+  `pipeline-toolkit` plugin), one branch per stage: `feat/server-check`, `feat/camera`,
+  `feat/calendar`. Skipping the pipeline needs the owner's OK first.

@@ -1,0 +1,6 @@
+# Pipeline run-time state lives here, one folder per run: <RUN-ID>/ where
+# RUN-ID = <FEATURE-ID>-<YYYYMMDD-HHMM>. A reader only ever opens its own run's
+# folder, so another run's artifact is unreachable rather than merely detectable.
+# `latest` names the newest run, for humans. `multi-sprint-queue.md` is the one
+# file that lives at this level on purpose: it is the list of runs, not a run.
+# All of it is transient — safe to gitignore.
