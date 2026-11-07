@@ -93,6 +93,20 @@ Validation: each integration validates in its `save_*_config` command (URL schem
 
 ## 6. What already exists for each fork feature
 
+### Hardware sensors (H-1, built 2026-11-07)
+
+`widgetsack/src/fork/hwinfo/` + `client/src/lib/widgets/fork/hwinfo/` — the first fork plugin and the
+template for the next ones. Shape: `model.rs` (pure `Reading` → slugs, catalog, `hw.cpu.*` label
+heuristics), two readers behind one `probe_with` seam (`shared_mem.rs` parses the SDK layout from a
+byte copy; `registry.rs` parses HWiNFO's `HKCU\Software\HWiNFO64\VSB` mirror), `mod.rs` = the
+stocks.rs integration shape (IntegrationTask + SampleCache + `prime_window`, `plugins/hwinfo.json`,
+demand gate on the `hw.` prefix). Client: `hwinfo-types.ts` ↔ serde, `hwinfo-commands.ts` (typed
+`invoke`s, tested against the command names), `hwinfo-source.ts` (catalog = well-known ids + enabled
+readings), `hwinfoCatalog.ts` (pure pane logic), `HwinfoSettings.tsx` (container), `index.ts`
+(`registerPlugin`). Core touches: `main.rs` (`.manage` + 4 commands), `sensors.rs` (1 prime line),
+`plugins/index.ts` (1 BUILTINS row), `contract.ts` (4 names), `Cargo.toml` (`Win32_System_Memory`).
+Decision record: `docs/decisions/003-hwinfo-sensor-source.md`.
+
 ### Server check (stage 1)
 
 - `ping` widget: Rust ICMP via `IcmpSendEcho` (no admin, no raw socket), 3 s interval, 1 s

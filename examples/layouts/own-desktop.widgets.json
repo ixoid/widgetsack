@@ -494,7 +494,30 @@
                                 "x": 0,
                                 "y": 0
                               },
-                              "sensor": "cpu.freq.current",
+                              "sensor": "hw.cpu.clock.max",
+                              "type": "gauge"
+                            }
+                          },
+                          {
+                            "basis": 100,
+                            "id": "cpu-temp-slot",
+                            "unit": {
+                              "config": {
+                                "label": "Temp",
+                                "max": 95,
+                                "min": 0,
+                                "style": "arc",
+                                "sweep": 270,
+                                "unit": "°C"
+                              },
+                              "id": "cpu-temp",
+                              "rect": {
+                                "h": 100,
+                                "w": 100,
+                                "x": 0,
+                                "y": 0
+                              },
+                              "sensor": "hw.cpu.temp",
                               "type": "gauge"
                             }
                           }
