@@ -28,6 +28,8 @@ or it is blind.
 
 ## HIGH
 
+## MEDIUM
+
 ### [qa] Stale Open-Meteo values stay in mounted windows after switching to met.no
 - **Severity:** MEDIUM
 - **File:** `widgetsack/src/weather.rs:319`
@@ -39,7 +41,7 @@ or it is blind.
 - **Fix:** emit a clear/reset for weather.* on restart or have the hub drop weather.* on status 'connecting'.
 - **Check:** none - owner picks the reset mechanism; then add a hub test.
 
-
+## LOW / Cosmetic
 
 ### [qa] met.no day highs/lows for days 3-6 use 6-hourly instants
 - **Severity:** LOW
@@ -52,7 +54,6 @@ or it is blind.
 - **Fix:** note in ADR Consequences.
 - **Check:** none - documentation wording.
 
-
 ### [qa] Upstream AiUsage tests depend on the machine locale
 - **Severity:** LOW
 - **File:** `client/src/lib/widgets/meters/AiUsage.test.tsx:218`, `client/src/lib/widgets/meters/AiUsage.compact.test.tsx:294`
@@ -64,7 +65,20 @@ or it is blind.
 - **Fix:** in the two tests, stub the formatter or assert via a locale-independent matcher (e.g. `screen.getByText((t) => /1[.,]25/.test(t))`), or pin `Intl.NumberFormat` default locale in `client/src/test-setup.ts` for the suite. Prefer the test-side fix and offer it upstream as a PR.
 - **Check:** `cd client && npx vitest run src/lib/widgets/meters/AiUsage.test.tsx src/lib/widgets/meters/AiUsage.compact.test.tsx` on a ru-RU machine → `Tests 19 passed (19)`; positive control: the same two assertions still fail if the formatter is forced to `ru-RU`.
 
+### [qa] Studio integration tool weather `unit` enum ['C','F'] does not match stored 'celsius'/'fahrenheit'
+- **Severity:** LOW
+- **File:** `client/src/lib/llm/studioIntegrationTools.ts:82`
+- **Found by:** security-reviewer (pre-existing upstream, not security)
+- **Feature:** weather provider met.no
+- **Date:** 2026-11-07
+- **Status:** open
+- **Description:** the settings pane stores `unit: "celsius"`, so any tool edit that omits `unit` re-validates `"celsius"` against `['C','F']` and throws `Invalid setting: unit.`; an explicit `"F"` is saved but `unit_letter("F")` → C and the Open-Meteo URL asks for Celsius. The test status mock uses `unit: 'C'`, which hides it.
+- **Fix:** change the enum to `['celsius','fahrenheit']` and the test mock to `unit: 'celsius'` (or map C/F to celsius/fahrenheit in the tool before save).
+- **Check:** `cd client && npx vitest run src/lib/llm/studioIntegrationTools.test.ts` → passes with a case where status `unit: 'celsius'` and settings `{ latitude: 2 }` calls `save_weather_config` with `unit: 'celsius'` (positive control: the same case with `settings: { unit: 'kelvin' }` still throws `Invalid setting: unit.`).
+
 ## Closed
+<!-- fixed / wont-fix / stale items moved here with date + reason -->
+
 ### [qa] Line endings of weather.rs, main.rs, Cargo.toml flipped LF to CRLF
 - **Severity:** HIGH
 - **File:** `widgetsack/src/weather.rs:1`
@@ -76,10 +90,6 @@ or it is blind.
 - **Fix:** convert the five files to LF (sed -i 's/\r$//'), recommit.
 - **Check:** `git ls-files --eol widgetsack/src/weather.rs widgetsack/src/main.rs widgetsack/Cargo.toml widgetsack/src/fork/weather_metno.rs docs/decisions/001-weather-provider-metno.md` -> all i/lf (control: widgetsack/src/ha.rs i/lf); `git diff d86711f..HEAD --stat -- widgetsack/src/main.rs` -> 1 line.
 
-
-## MEDIUM
-
-<!-- fixed / wont-fix / stale items moved here with date + reason -->
 ### [qa] Studio integration tool save resets weather provider to open-meteo
 - **Severity:** HIGH
 - **File:** `client/src/lib/llm/studioIntegrationTools.ts:80`
@@ -135,3 +145,13 @@ or it is blind.
 - **Fix:** re-wrap the comment.
 - **Check:** `awk 'length>100 && /^\/\//' client/src/lib/widgets/plugins/WeatherSettings.tsx` -> no output (positive control: the same awk without the `^//` filter prints the long ternary line).
 
+### [security] met.no redirect policy doc says "at most 3" hops, code follows at most 2
+- **Severity:** LOW
+- **File:** `widgetsack/src/fork/weather_metno.rs:52`
+- **Found by:** security-reviewer
+- **Feature:** weather provider met.no
+- **Date:** 2026-11-07
+- **Status:** closed 2026-11-07 — comment rewritten in `widgetsack/src/fork/weather_metno.rs` (follow_redirect): states that `hops` counts the original request so `hops < 3` = at most 2 redirects, with a warning not to loosen it; `grep -n "at most 2 redirects" widgetsack/src/fork/weather_metno.rs` → 1 match (commit 0441f39)
+- **Description:** reqwest 0.13.5 pushes the original request URL into `previous()` before calling the policy (`redirect.rs:308-318`), so `hops < 3` follows at most 2 redirects; the doc comment (and the test's 0/2/3 labels) claim 3. Stricter than documented (no exposure), but a later "fix" guided by the comment could loosen the control unnoticed.
+- **Fix:** reword the doc to "at most 2 redirects (`previous()` includes the original request)" or change to `hops <= 3` if 3 is intended; add a one-line comment in `redirect_policy_follows_only_https_api_met_no` stating the `previous().len()` semantics.
+- **Check:** `grep -n "at most 3" widgetsack/src/fork/weather_metno.rs` → 0 matches (positive control: `grep -n "fn follow_redirect" widgetsack/src/fork/weather_metno.rs` → 1 match); `cd widgetsack && cargo test fork::weather_metno::tests::redirect_policy` → passes.

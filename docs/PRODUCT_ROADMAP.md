@@ -8,7 +8,7 @@
 ```
 /feature Weather provider switch with met.no as an alternative to Open-Meteo (see .claude/agent-bus/weather-metno-20261107-1858/feature-request.md for the full scope).
 ```
-**Priority:** Phase 1 · **Status:** in pipeline (branch `feat/weather-metno`, 2026-11-07)
+**Priority:** Phase 1 · **Status:** ✅ done 2026-11-07 on branch `feat/weather-metno` (pipeline run weather-metno-20261107-1858; awaiting the owner's merge decision)
 **Depends on:** none
 **Est. size/mode:** L · DATA — persisted config field + new outbound host
 
