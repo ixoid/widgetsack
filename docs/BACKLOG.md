@@ -86,27 +86,19 @@ or it is blind.
 - **Fix:** if a hub-side "drop prefix on status connecting" mechanism is ever added for weather, reuse it here.
 - **Check:** none — owner decides whether direct bindings to removed targets matter.
 
+## Closed
+<!-- fixed / wont-fix / stale items moved here with date + reason -->
+
 ### [qa] met.no day highs/lows for days 3-6 use 6-hourly instants
 - **Severity:** LOW
 - **File:** `widgetsack/src/fork/weather_metno.rs:381`
 - **Found by:** qa-reviewer
 - **Feature:** weather provider met.no
 - **Date:** 2026-11-07
-- **Status:** open
+- **Status:** closed 2026-11-07 — wording added to ADR-001 Consequences: `grep -c 'understate the real extremes' docs/decisions/001-weather-provider-metno.md` → `1` (positive control: `grep -c 'understate' docs/decisions/002-server-check-source.md` → `0`). Documentation only; no code change.
 - **Description:** 4 samples/day understate real extremes; compact has no daily min/max.
 - **Fix:** note in ADR Consequences.
 - **Check:** none - documentation wording.
-
-### [qa] Upstream AiUsage tests depend on the machine locale
-- **Severity:** LOW
-- **File:** `client/src/lib/widgets/meters/AiUsage.test.tsx:218`, `client/src/lib/widgets/meters/AiUsage.compact.test.tsx:294`
-- **Found by:** coordinator (stage 0 baseline)
-- **Feature:** fork stage 0
-- **Date:** 2026-11-07
-- **Status:** open — checked 2026-11-07, reproduces: `npx vitest run src/lib/widgets/meters/AiUsage.test.tsx` → `Unable to find an element with the text: 1.2K tokens` (renders «1,2 тыс. tokens» under ru-RU)
-- **Description:** `AiUsage.tsx:45` formats with `Intl.NumberFormat(undefined, { notation: 'compact' })`; the two tests assert English output, so they fail on any non-English Windows locale. Not a product bug (user-locale formatting is intended); a test-portability bug worth upstreaming.
-- **Fix:** in the two tests, stub the formatter or assert via a locale-independent matcher (e.g. `screen.getByText((t) => /1[.,]25/.test(t))`), or pin `Intl.NumberFormat` default locale in `client/src/test-setup.ts` for the suite. Prefer the test-side fix and offer it upstream as a PR.
-- **Check:** `cd client && npx vitest run src/lib/widgets/meters/AiUsage.test.tsx src/lib/widgets/meters/AiUsage.compact.test.tsx` on a ru-RU machine → `Tests 19 passed (19)`; positive control: the same two assertions still fail if the formatter is forced to `ru-RU`.
 
 ### [qa] Studio integration tool weather `unit` enum ['C','F'] does not match stored 'celsius'/'fahrenheit'
 - **Severity:** LOW
@@ -114,13 +106,21 @@ or it is blind.
 - **Found by:** security-reviewer (pre-existing upstream, not security)
 - **Feature:** weather provider met.no
 - **Date:** 2026-11-07
-- **Status:** open
+- **Status:** closed 2026-11-07 — enum changed to `['celsius', 'fahrenheit']` (the words the pane and `plugins/weather.json` store; `weather.rs::unit_letter` maps them); `cd client && npx vitest run src/lib/llm/studioIntegrationTools.test.ts` → `Test Files 1 passed (1)`, `Tests 15 passed (15)` with the new case: status `unit: 'celsius'` + settings `{ latitude: 2 }` → `save_weather_config` called with `unit: 'celsius'`; positive control in the same case: `{ unit: 'kelvin' }` and the old `{ unit: 'F' }` both throw `Invalid setting: unit`.
 - **Description:** the settings pane stores `unit: "celsius"`, so any tool edit that omits `unit` re-validates `"celsius"` against `['C','F']` and throws `Invalid setting: unit.`; an explicit `"F"` is saved but `unit_letter("F")` → C and the Open-Meteo URL asks for Celsius. The test status mock uses `unit: 'C'`, which hides it.
 - **Fix:** change the enum to `['celsius','fahrenheit']` and the test mock to `unit: 'celsius'` (or map C/F to celsius/fahrenheit in the tool before save).
 - **Check:** `cd client && npx vitest run src/lib/llm/studioIntegrationTools.test.ts` → passes with a case where status `unit: 'celsius'` and settings `{ latitude: 2 }` calls `save_weather_config` with `unit: 'celsius'` (positive control: the same case with `settings: { unit: 'kelvin' }` still throws `Invalid setting: unit.`).
 
-## Closed
-<!-- fixed / wont-fix / stale items moved here with date + reason -->
+### [qa] Upstream AiUsage tests depend on the machine locale
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/meters/AiUsage.test.tsx:218`, `client/src/lib/widgets/meters/AiUsage.compact.test.tsx:294`
+- **Found by:** coordinator (stage 0 baseline)
+- **Feature:** fork stage 0
+- **Date:** 2026-11-07
+- **Status:** closed 2026-11-07 — `cd client && npx vitest run src/lib/widgets/meters/AiUsage.test.tsx src/lib/widgets/meters/AiUsage.compact.test.tsx` on the owner's ru-RU machine → `Test Files 2 passed (2)`, `Tests 19 passed (19)`; the two assertions now compare against the same `Intl.NumberFormat(undefined, { notation: 'compact' })` output (whitespace-normalised, digits asserted with `/^1[.,]2/`); positive control: before the change the same command on this machine failed with `Unable to find an element with the text: 1,2 тыс. tokens`. The pre-push hook's `--exclude AiUsage*` is removed (`.claude/settings.json`); full `npm run test:coverage` → `Tests 4763 passed (4763)`, coverage 100 % on all four metrics.
+- **Description:** `AiUsage.tsx:45` formats with `Intl.NumberFormat(undefined, { notation: 'compact' })`; the two tests assert English output, so they fail on any non-English Windows locale. Not a product bug (user-locale formatting is intended); a test-portability bug worth upstreaming.
+- **Fix:** in the two tests, stub the formatter or assert via a locale-independent matcher (e.g. `screen.getByText((t) => /1[.,]25/.test(t))`), or pin `Intl.NumberFormat` default locale in `client/src/test-setup.ts` for the suite. Prefer the test-side fix and offer it upstream as a PR.
+- **Check:** `cd client && npx vitest run src/lib/widgets/meters/AiUsage.test.tsx src/lib/widgets/meters/AiUsage.compact.test.tsx` on a ru-RU machine → `Tests 19 passed (19)`; positive control: the same two assertions still fail if the formatter is forced to `ru-RU`.
 
 ### [qa] Stale Open-Meteo values stay in mounted windows after switching to met.no
 - **Severity:** MEDIUM
