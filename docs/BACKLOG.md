@@ -43,6 +43,28 @@ or it is blind.
 
 ## LOW / Cosmetic
 
+### [qa] Server check: IPv6 literals are rejected as icmp/tcp hosts
+- **Severity:** LOW
+- **File:** `widgetsack/src/fork/server_check.rs` (`valid_host` rejects ':'), `widgetsack/src/ping.rs` (`resolve_ipv4`)
+- **Found by:** lane S-1 self-review
+- **Feature:** server check
+- **Date:** 2026-11-07
+- **Status:** open
+- **Description:** the host charset check rejects ':' to keep `host:port` and schemes out, which also rejects bracketed/bare IPv6 literals; the shared ICMP helper is IPv4-only anyway. DNS names that resolve to IPv6 still work for TCP/HTTP.
+- **Fix:** allow `[v6]` in `valid_host` and add an `Icmp6SendEcho2` path in ping.rs if the owner ever has an IPv6-only target; otherwise document in ADR-002 (already noted).
+- **Check:** `cd widgetsack && cargo test fork::server_check::tests::validate` → a new case accepting `[fe80::1]` for tcp passes (positive control: `host:22` still rejected).
+
+### [qa] Server check: a removed target's `srv.<id>.*` scalars stay in open windows until reload
+- **Severity:** LOW
+- **File:** `widgetsack/src/fork/server_check.rs` (`run_server_check` clears only the backend `SampleCache`)
+- **Found by:** lane S-1 self-review
+- **Feature:** server check
+- **Date:** 2026-11-07
+- **Status:** open
+- **Description:** after deleting a target and saving, the card (driven by `srv.list`) updates at once, but a Text/Gauge bound directly to the old `srv.<id>.ms` keeps its last value in already-open windows. Same class as the closed met.no stale-values entry; harmless for the card.
+- **Fix:** if a hub-side "drop prefix on status connecting" mechanism is ever added for weather, reuse it here.
+- **Check:** none — owner decides whether direct bindings to removed targets matter.
+
 ### [qa] met.no day highs/lows for days 3-6 use 6-hourly instants
 - **Severity:** LOW
 - **File:** `widgetsack/src/fork/weather_metno.rs:381`

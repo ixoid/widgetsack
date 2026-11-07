@@ -74,7 +74,7 @@ fn samples_for(host: &str, rtt_ms: Option<f64>, ts: u64) -> Vec<SensorSample> {
 
 /// Resolve a host string to an IPv4 address: an IP literal directly (no DNS), else the first A record.
 #[cfg(target_os = "windows")]
-fn resolve_ipv4(host: &str) -> Option<Ipv4Addr> {
+pub(crate) fn resolve_ipv4(host: &str) -> Option<Ipv4Addr> {
     use std::net::{IpAddr, ToSocketAddrs};
     if let Ok(ip) = host.parse::<Ipv4Addr>() {
         return Some(ip);
@@ -91,7 +91,7 @@ fn resolve_ipv4(host: &str) -> Option<Ipv4Addr> {
 /// ICMP-echo `addr`, returning the round-trip time in ms, or `None` on timeout / unreachable. Uses the
 /// `IcmpSendEcho` helper (no admin, no raw socket). Blocking — call from `spawn_blocking`.
 #[cfg(target_os = "windows")]
-fn icmp_ping(addr: Ipv4Addr, timeout_ms: u32) -> Option<f64> {
+pub(crate) fn icmp_ping(addr: Ipv4Addr, timeout_ms: u32) -> Option<f64> {
     use windows::Win32::NetworkManagement::IpHelper::{
         ICMP_ECHO_REPLY, IcmpCloseHandle, IcmpCreateFile, IcmpSendEcho,
     };

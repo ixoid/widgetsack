@@ -81,7 +81,7 @@ Key invariants:
 
 ### Not done ❌
 - [ ] Этап 0: план этапов 1–3 согласован с владельцем (`docs/dev/fork-stage0-plan.md` § Decisions requested)
-- [ ] Этап 1: server check (`feat/server-check`)
+- [ ] Этап 1: server check — код готов в `feat/S-1-server-check` (2026-11-07, ADR-002); ждёт merge и проверки владельцем на живом оверлее
 - [ ] Этап 2: camera / go2rtc (`feat/camera`)
 - [ ] Этап 3: calendar / agenda (`feat/calendar`)
 - [ ] Этап 4: упаковка, автозапуск, `config.example.*`, `README-fork.md`

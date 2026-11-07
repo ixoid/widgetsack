@@ -199,6 +199,11 @@ export const COMMANDS = {
 	agendaConfigStatus: 'agenda_config_status',
 	agendaConnect: 'agenda_connect',
 	agendaDisconnect: 'agenda_disconnect',
+	// Server check source (fork: widgetsack/src/fork/server_check.rs)
+	saveServerCheckConfig: 'save_server_check_config',
+	serverCheckConfigStatus: 'server_check_config_status',
+	serverCheckConnect: 'server_check_connect',
+	serverCheckDisconnect: 'server_check_disconnect',
 	// AI provider + agent control (llm.rs, control.rs)
 	saveLlmConfig: 'save_llm_config',
 	llmClearKey: 'llm_clear_key',
