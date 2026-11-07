@@ -18,9 +18,9 @@
 ```
 **Priority:** Phase 2 · **Depends on:** W-1 · **Est. size/mode:** S · SPEC
 
-### [W-3]: Hourly forecast strip
+### [W-3]: Forecast widget — hourly strip + localised day rows
 ```
-/feature A compact hourly forecast row (next 12 hours: hour, icon, temperature) as a new fork widget `weatherhourly` in client/src/lib/widgets/fork/weather/, fed by new `weather.hour.N.*` sensors emitted by the provider mappers (met.no gives hourly data; Open-Meteo would need the `hourly=` query). Matches the Rainmeter ASTROWeather strip the owner had. Register via a fork plugin, gen:docs, tests.
+/feature A fork widget `weatherforecast` in client/src/lib/widgets/fork/weather/ that reproduces the owner's Rainmeter ASTROWeather panel: (a) day rows — one row per day (today + N), each with a localised day name and date (ru: «Сегодня», «Вс 8 ноя»; locale config like the clock widget), condition icon, HIGH and LOW as separate values (the stock `weather` meter only has English TODAY/SUN labels and no date); (b) an hourly strip — next 12 hours: hour, icon, temperature, fed by new `weather.hour.N.{time,temp,code}` sensors emitted by the provider mappers (met.no gives hourly data in the same response; Open-Meteo needs the `hourly=` query, bounded to 24 entries). Props-only meter, config: days, hours, locale, showCurrent; pure helpers with tests (hour bucketing, label formatting); register via a fork plugin; gen:docs. Interim: the stock weather widget is restyled into day rows via layout CSS (examples/layouts/own-desktop.widgets.json, 2026-11-07).
 ```
 **Priority:** Phase 2 · **Depends on:** W-1 · **Est. size/mode:** M · SPEC
 
