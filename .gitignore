@@ -10,6 +10,8 @@ settings.json
 /work/
 
 # ---- fork: agentic pipeline layer (Claude Code + ZCode) ----
+# upstream ignores every settings.json; the pipeline hook config must be versioned
+!.claude/settings.json
 
 # Claude Code — транзитное состояние пайплайна и локальные настройки
 .claude/agent-bus/*
