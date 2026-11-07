@@ -320,6 +320,7 @@ async fn main() -> Result<(), ()> {
         .manage(rss::RssState::default())
         .manage(agenda::AgendaState::default())
         .manage(fork::hwinfo::HwinfoState::default())
+        .manage(fork::server_check::ServerCheckState::default())
         .manage(timings::SubsystemTimings::default())
         .manage(sensors::ActiveSensors::default())
         .manage(audio::SpectrumState::default())
@@ -456,6 +457,10 @@ async fn main() -> Result<(), ()> {
             fork::hwinfo::hwinfo_config_status,
             fork::hwinfo::hwinfo_connect,
             fork::hwinfo::hwinfo_disconnect,
+            fork::server_check::save_server_check_config,
+            fork::server_check::server_check_config_status,
+            fork::server_check::server_check_connect,
+            fork::server_check::server_check_disconnect,
             timings::set_subsystem_profiling,
             timings::subsystem_timings,
             llm::save_llm_config,

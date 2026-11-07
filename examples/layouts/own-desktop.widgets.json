@@ -98,7 +98,7 @@
               "invertColors": false,
               "label": "",
               "showSparkline": true,
-              "symbol": "BTC/USD"
+              "symbol": "BTC-USD"
             },
             "id": "ticker-3hpjgi",
             "rect": {

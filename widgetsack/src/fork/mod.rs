@@ -2,4 +2,5 @@
 //! `mod fork;` in `main.rs`, so upstream merges stay conflict-free.
 
 pub mod hwinfo;
+pub mod server_check;
 pub mod weather_metno;

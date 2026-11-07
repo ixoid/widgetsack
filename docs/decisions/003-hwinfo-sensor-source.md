@@ -1,4 +1,4 @@
-# ADR-002: HWiNFO as the hardware-sensor source (shared memory + registry gadget)
+# ADR-003: HWiNFO as the hardware-sensor source (shared memory + registry gadget)
 
 - **Status:** Accepted
 - **Date:** 2026-11-07

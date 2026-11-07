@@ -105,7 +105,7 @@ demand gate on the `hw.` prefix). Client: `hwinfo-types.ts` ↔ serde, `hwinfo-c
 readings), `hwinfoCatalog.ts` (pure pane logic), `HwinfoSettings.tsx` (container), `index.ts`
 (`registerPlugin`). Core touches: `main.rs` (`.manage` + 4 commands), `sensors.rs` (1 prime line),
 `plugins/index.ts` (1 BUILTINS row), `contract.ts` (4 names), `Cargo.toml` (`Win32_System_Memory`).
-Decision record: `docs/decisions/002-hwinfo-sensor-source.md`.
+Decision record: `docs/decisions/003-hwinfo-sensor-source.md`.
 
 ### Server check (stage 1)
 

@@ -1,6 +1,6 @@
 //! HWiNFO hardware sensors (fork, roadmap H-1): CPU temperature, effective clocks and package power
 //! — plus any HWiNFO reading the user enables — as `hw.*` telemetry. HWiNFO64 publishes its sensor
-//! table through two read-only interfaces (ADR-002); this source reads whichever is available:
+//! table through two read-only interfaces (ADR-003); this source reads whichever is available:
 //! shared memory (`shared_mem.rs`, the full catalog, must be switched on in HWiNFO) first, else the
 //! registry gadget mirror (`registry.rs`, the readings ticked in HWiNFO, on by default for Rainmeter
 //! users). Both produce `model::Reading`s; `model.rs` derives the well-known `hw.cpu.*` ids and the

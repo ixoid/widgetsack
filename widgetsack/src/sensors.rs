@@ -878,6 +878,7 @@ pub async fn set_active_sensors<R: Runtime>(
     crate::agenda::prime_window(&window, &added);
     crate::stocks::prime_window(&window, &added);
     crate::fork::hwinfo::prime_window(&window, &added);
+    crate::fork::server_check::prime_window(&window, &added);
     Ok(())
 }
 
