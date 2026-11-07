@@ -8,7 +8,7 @@
 ```
 /feature Weather provider switch with met.no as an alternative to Open-Meteo (see .claude/agent-bus/weather-metno-20261107-1858/feature-request.md for the full scope).
 ```
-**Priority:** Phase 1 · **Status:** ✅ done 2026-11-07 on branch `feat/weather-metno` (pipeline run weather-metno-20261107-1858; awaiting the owner's merge decision)
+**Priority:** Phase 1 · **Status:** ✅ done 2026-11-07, merged into `main` (pipeline run weather-metno-20261107-1858; owner confirmed 2026-11-07)
 **Depends on:** none
 **Est. size/mode:** L · DATA — persisted config field + new outbound host
 
@@ -68,9 +68,8 @@
 ---
 
 ## Recommended execution order
-1. W-1 — in flight; the weather card is empty without it.
-2. H-1 — CPU temperature and real clocks; the owner's most visible gap vs Rainmeter after weather.
-3. S-1 — brief stage 1.
-4. W-2, K-1 — small follow-ups.
-5. C-1 — biggest, needs the CSP decision.
-6. W-3, then P-1.
+1. W-1 — done, in `main`.
+2. H-1 and S-1 — in parallel lanes (owner decision 2026-11-07: two worktrees, `feat/H-1-hwinfo` and `feat/S-1-server-check`).
+3. W-2, K-1 and the LOW backlog items — a third, sequential lane once one of the big lanes frees the machine.
+4. C-1 — after S-1; needs the owner at the keyboard (CSP decision, real camera, go2rtc).
+5. W-3, then P-1.
