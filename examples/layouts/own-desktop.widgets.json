@@ -40,7 +40,7 @@
                     "w": 340,
                     "h": 236
                   },
-                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
+                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.5); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-weather-root",
                     "kind": "col",
@@ -81,7 +81,7 @@
                     "w": 340,
                     "h": 196
                   },
-                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
+                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.5); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-system-root",
                     "kind": "col",
@@ -263,7 +263,7 @@
                         "w": 900,
                         "h": 440
                       },
-                      "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.66); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
+                      "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.45); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                       "tokens": {
                         "--np-accent": "#7cc4ff",
                         "--np-text-body": "18px",
@@ -321,7 +321,7 @@
                     "w": 440,
                     "h": 276
                   },
-                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
+                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.5); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-gpu-root",
                     "kind": "col",
@@ -437,7 +437,7 @@
                     "w": 440,
                     "h": 236
                   },
-                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
+                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.5); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-cpu-root",
                     "kind": "col",
@@ -576,7 +576,7 @@
                     "w": 440,
                     "h": 124
                   },
-                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
+                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.5); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-history-root",
                     "kind": "col",
