@@ -97,17 +97,6 @@ or it is blind.
 - **Fix:** note in ADR Consequences.
 - **Check:** none - documentation wording.
 
-### [qa] Upstream AiUsage tests depend on the machine locale
-- **Severity:** LOW
-- **File:** `client/src/lib/widgets/meters/AiUsage.test.tsx:218`, `client/src/lib/widgets/meters/AiUsage.compact.test.tsx:294`
-- **Found by:** coordinator (stage 0 baseline)
-- **Feature:** fork stage 0
-- **Date:** 2026-11-07
-- **Status:** open — checked 2026-11-07, reproduces: `npx vitest run src/lib/widgets/meters/AiUsage.test.tsx` → `Unable to find an element with the text: 1.2K tokens` (renders «1,2 тыс. tokens» under ru-RU)
-- **Description:** `AiUsage.tsx:45` formats with `Intl.NumberFormat(undefined, { notation: 'compact' })`; the two tests assert English output, so they fail on any non-English Windows locale. Not a product bug (user-locale formatting is intended); a test-portability bug worth upstreaming.
-- **Fix:** in the two tests, stub the formatter or assert via a locale-independent matcher (e.g. `screen.getByText((t) => /1[.,]25/.test(t))`), or pin `Intl.NumberFormat` default locale in `client/src/test-setup.ts` for the suite. Prefer the test-side fix and offer it upstream as a PR.
-- **Check:** `cd client && npx vitest run src/lib/widgets/meters/AiUsage.test.tsx src/lib/widgets/meters/AiUsage.compact.test.tsx` on a ru-RU machine → `Tests 19 passed (19)`; positive control: the same two assertions still fail if the formatter is forced to `ru-RU`.
-
 ### [qa] Studio integration tool weather `unit` enum ['C','F'] does not match stored 'celsius'/'fahrenheit'
 - **Severity:** LOW
 - **File:** `client/src/lib/llm/studioIntegrationTools.ts:82`
@@ -121,6 +110,17 @@ or it is blind.
 
 ## Closed
 <!-- fixed / wont-fix / stale items moved here with date + reason -->
+
+### [qa] Upstream AiUsage tests depend on the machine locale
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/meters/AiUsage.test.tsx:218`, `client/src/lib/widgets/meters/AiUsage.compact.test.tsx:294`
+- **Found by:** coordinator (stage 0 baseline)
+- **Feature:** fork stage 0
+- **Date:** 2026-11-07
+- **Status:** closed 2026-11-07 — `cd client && npx vitest run src/lib/widgets/meters/AiUsage.test.tsx src/lib/widgets/meters/AiUsage.compact.test.tsx` on the owner's ru-RU machine → `Test Files 2 passed (2)`, `Tests 19 passed (19)`; the two assertions now compare against the same `Intl.NumberFormat(undefined, { notation: 'compact' })` output (whitespace-normalised, digits asserted with `/^1[.,]2/`); positive control: before the change the same command on this machine failed with `Unable to find an element with the text: 1,2 тыс. tokens`. The pre-push hook's `--exclude AiUsage*` is removed (`.claude/settings.json`); full `npm run test:coverage` → `Tests 4763 passed (4763)`, coverage 100 % on all four metrics.
+- **Description:** `AiUsage.tsx:45` formats with `Intl.NumberFormat(undefined, { notation: 'compact' })`; the two tests assert English output, so they fail on any non-English Windows locale. Not a product bug (user-locale formatting is intended); a test-portability bug worth upstreaming.
+- **Fix:** in the two tests, stub the formatter or assert via a locale-independent matcher (e.g. `screen.getByText((t) => /1[.,]25/.test(t))`), or pin `Intl.NumberFormat` default locale in `client/src/test-setup.ts` for the suite. Prefer the test-side fix and offer it upstream as a PR.
+- **Check:** `cd client && npx vitest run src/lib/widgets/meters/AiUsage.test.tsx src/lib/widgets/meters/AiUsage.compact.test.tsx` on a ru-RU machine → `Tests 19 passed (19)`; positive control: the same two assertions still fail if the formatter is forced to `ru-RU`.
 
 ### [qa] Stale Open-Meteo values stay in mounted windows after switching to met.no
 - **Severity:** MEDIUM

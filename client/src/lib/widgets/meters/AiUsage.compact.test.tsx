@@ -2,6 +2,14 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
 import AiUsage from './AiUsage';
 import { defaultUsageProviders, usageSourceKey, type UsageMetric } from '../../core/aiUsage';
+
+// What the meter renders for `v` in the machine locale (ru-RU gives «1,2 тыс.», en «1.2K»).
+// Intl pads with a no-break space; Testing Library collapses node whitespace to plain spaces
+// before matching a string, so the expectation is normalised the same way.
+const compactNumber = (v: number, maximumFractionDigits = 2): string =>
+	new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits })
+		.format(v)
+		.replace(/\s+/g, ' ');
 afterEach(cleanup);
 
 it('keeps quota sparklines on the percentage scale instead of stretching low usage to full height', () => {
@@ -291,7 +299,10 @@ it('shows optional short reset countdowns and concise token labels', () => {
 	const view = render(<AiUsage providers={[provider]} readings={readings} now={0} />);
 	expect(screen.queryByText('13h')).toBeNull();
 	expect(screen.getByText('Tok')).toBeVisible();
-	expect(screen.getByText('1.25M')).toBeVisible();
+	// Locale-formatted (ru-RU renders «1,25 млн»): compare against the same Intl formatter.
+	const tokensValue = screen.getByText(compactNumber(1250000));
+	expect(tokensValue).toBeVisible();
+	expect(tokensValue.textContent).toMatch(/^1[.,]25/);
 	expect(screen.queryByText('Observed token consumption since tracker started')).toBeNull();
 	view.rerender(<AiUsage providers={[provider]} readings={readings} now={0} showResets />);
 	expect(screen.getByText('13h')).toBeVisible();
