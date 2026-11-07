@@ -1,20 +1,24 @@
 // Screenshot a layout file as the studio renders it in a plain browser (dev Tauri mock, no live
 // sensors). Usage (from client/, with `npm run dev` or `tauri dev` serving port 1420):
-//   node scripts/shot-layout.mjs <layout.json> <out.png> [baseUrl]
+//   node scripts/shot-layout.mjs <layout.json> <out.png> [baseUrl] [monitorKey]
 // Optional: PW_EXE=<path to a Chromium binary> when the Playwright-managed browser is not installed.
 // The studio canvas is captured at the mock monitor's size (1920×1032 work area), so what you see
 // is geometry, cards, fonts and placeholders — readings show as "—" or the plugin hint.
 import { readFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
-const [layoutPath, outPath, baseUrl = 'http://localhost:1420'] = process.argv.slice(2);
+const [layoutPath, outPath, baseUrl = 'http://localhost:1420', monitorKey] = process.argv.slice(2);
 if (!layoutPath || !outPath) {
 	console.error('usage: node scripts/shot-layout.mjs <layout.json> <out.png> [baseUrl]');
 	process.exit(2);
 }
 // Minified: the mock reads `?mockLayout=` from location.search. The server never sees it — the
 // init script rewrites the URL client-side, so a large layout does not hit the request-line limit.
-const layout = JSON.stringify(JSON.parse(readFileSync(layoutPath, 'utf8')));
+// Optional 4th arg: a monitor key whose layout is rendered in place of `default` (the mock has one
+// 1920×1032 monitor keyed `default`, so per-monitor layouts need remapping to be seen).
+const doc = JSON.parse(readFileSync(layoutPath, 'utf8'));
+if (monitorKey && doc.monitors?.[monitorKey]) doc.monitors = { default: doc.monitors[monitorKey] };
+const layout = JSON.stringify(doc);
 const browser = await chromium.launch(
 	process.env.PW_EXE ? { executablePath: process.env.PW_EXE } : {}
 );

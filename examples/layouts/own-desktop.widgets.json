@@ -202,12 +202,12 @@
             "basis": {
               "fr": 1
             },
-            "gap": 12,
+            "gap": 10,
             "align": "stretch",
             "children": [
               {
                 "id": "clock-time-slot",
-                "basis": 140,
+                "basis": 120,
                 "halign": "center",
                 "unit": {
                   "id": "clock-time",
@@ -216,17 +216,17 @@
                     "x": 0,
                     "y": 0,
                     "w": 420,
-                    "h": 140
+                    "h": 120
                   },
                   "config": {
                     "format": "HH:mm"
                   },
-                  "css": "text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45); .value { font-size: 136px; line-height: 1; font-weight: 300; letter-spacing: -0.02em; }"
+                  "css": "text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45); .value { font-size: 112px; line-height: 1; font-weight: 300; letter-spacing: -0.02em; }"
                 }
               },
               {
                 "id": "clock-date-slot",
-                "basis": 40,
+                "basis": 36,
                 "halign": "center",
                 "unit": {
                   "id": "clock-date",
@@ -235,7 +235,7 @@
                     "x": 0,
                     "y": 0,
                     "w": 520,
-                    "h": 40
+                    "h": 36
                   },
                   "config": {
                     "format": "dddd, MMMM D",
@@ -247,24 +247,29 @@
               {
                 "id": "agenda-row",
                 "kind": "row",
-                "basis": 260,
+                "basis": 440,
                 "justify": "center",
                 "align": "start",
                 "children": [
                   {
                     "id": "card-agenda",
-                    "basis": 560,
+                    "basis": 900,
                     "unit": {
                       "id": "card-agenda",
                       "kind": "group",
                       "name": "Upcoming events",
                       "size": {
-                        "w": 560,
-                        "h": 260
+                        "w": 900,
+                        "h": 440
                       },
                       "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.66); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                       "tokens": {
-                        "--np-accent": "#7cc4ff"
+                        "--np-accent": "#7cc4ff",
+                        "--np-text-body": "18px",
+                        "--np-line-body": "26px",
+                        "--np-text-caption": "13px",
+                        "--np-line-caption": "18px",
+                        "--np-gap": "6px"
                       },
                       "child": {
                         "id": "card-agenda-root",
@@ -274,19 +279,19 @@
                         "children": [
                           {
                             "id": "agenda-slot",
-                            "basis": 228,
+                            "basis": 408,
                             "unit": {
                               "id": "agenda",
                               "type": "agenda",
                               "rect": {
                                 "x": 0,
                                 "y": 0,
-                                "w": 528,
-                                "h": 228
+                                "w": 868,
+                                "h": 408
                               },
                               "config": {
                                 "title": "Upcoming events",
-                                "maxRows": 5
+                                "maxRows": 8
                               }
                             }
                           }
@@ -313,7 +318,7 @@
                   "name": "GPU",
                   "size": {
                     "w": 440,
-                    "h": 260
+                    "h": 254
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
@@ -324,7 +329,7 @@
                     "children": [
                       {
                         "id": "gpu-slot",
-                        "basis": 120,
+                        "basis": 110,
                         "unit": {
                           "id": "gpu",
                           "type": "gpu",
@@ -332,7 +337,7 @@
                             "x": 0,
                             "y": 0,
                             "w": 408,
-                            "h": 120
+                            "h": 110
                           },
                           "config": {
                             "showName": true
@@ -342,7 +347,7 @@
                       {
                         "id": "gpu-gauges",
                         "kind": "row",
-                        "basis": 106,
+                        "basis": 100,
                         "gap": 12,
                         "justify": "around",
                         "children": [
@@ -429,14 +434,14 @@
                   "name": "CPU & RAM",
                   "size": {
                     "w": 440,
-                    "h": 210
+                    "h": 232
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
                     "id": "card-cpu-root",
                     "kind": "col",
                     "pad": 16,
-                    "gap": 12,
+                    "gap": 10,
                     "children": [
                       {
                         "id": "cpu-name-slot",
@@ -461,7 +466,7 @@
                       {
                         "id": "cpu-gauges",
                         "kind": "row",
-                        "basis": 106,
+                        "basis": 100,
                         "gap": 12,
                         "justify": "around",
                         "children": [
@@ -510,50 +515,51 @@
                                 "sweep": 270
                               }
                             }
-                          },
-                          {
-                            "id": "ram-slot",
-                            "basis": 100,
-                            "unit": {
-                              "id": "ram",
-                              "type": "gauge",
-                              "sensor": "mem.used",
-                              "rect": {
-                                "x": 0,
-                                "y": 0,
-                                "w": 100,
-                                "h": 100
-                              },
-                              "config": {
-                                "label": "RAM",
-                                "unit": "%",
-                                "min": 0,
-                                "max": 100,
-                                "style": "arc",
-                                "sweep": 270
-                              }
-                            }
                           }
                         ]
                       },
                       {
-                        "id": "ram-text-slot",
-                        "basis": 22,
+                        "id": "ram-spark-slot",
+                        "basis": 28,
                         "unit": {
-                          "id": "ram-text",
+                          "id": "ram-spark",
+                          "type": "text",
+                          "sensor": "mem.used",
+                          "rect": {
+                            "x": 0,
+                            "y": 0,
+                            "w": 408,
+                            "h": 28
+                          },
+                          "config": {
+                            "label": "RAM",
+                            "format": "percent",
+                            "showSparkline": true,
+                            "sparklineStretch": true,
+                            "sparklineSeconds": 120,
+                            "sparklineScale": "percent",
+                            "sparklineSmooth": true
+                          }
+                        }
+                      },
+                      {
+                        "id": "ram-bytes-slot",
+                        "basis": 20,
+                        "unit": {
+                          "id": "ram-bytes",
                           "type": "text",
                           "sensor": "mem.used.bytes",
                           "rect": {
                             "x": 0,
                             "y": 0,
                             "w": 408,
-                            "h": 22
+                            "h": 20
                           },
                           "config": {
                             "label": "",
-                            "value": "RAM {bytes(mem.used.bytes)} / {bytes(mem.total)} · {round(mem.used)}%"
+                            "value": "{bytes(mem.used.bytes)} of {bytes(mem.total)} in use"
                           },
-                          "css": "font-size: var(--np-text-body); color: var(--np-label);"
+                          "css": "font-size: var(--np-text-caption); color: var(--np-label);"
                         }
                       }
                     ]
@@ -568,7 +574,7 @@
                   "name": "Load history",
                   "size": {
                     "w": 440,
-                    "h": 150
+                    "h": 132
                   },
                   "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.78); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
                   "child": {
@@ -579,7 +585,7 @@
                     "children": [
                       {
                         "id": "history-slot",
-                        "basis": 118,
+                        "basis": 100,
                         "unit": {
                           "id": "history",
                           "type": "history",
@@ -587,15 +593,15 @@
                             "x": 0,
                             "y": 0,
                             "w": 408,
-                            "h": 118
+                            "h": 100
                           },
                           "config": {
-                            "label": "CPU / GPU · 2 min",
-                            "sensorIds": "cpu.total,gpu.util",
+                            "label": "CPU / GPU / RAM · 2 min",
+                            "sensorIds": "cpu.total,gpu.util,mem.used",
                             "seconds": 120,
                             "showThreshold": true,
                             "threshold": 90,
-                            "showStats": true
+                            "showStats": false
                           }
                         }
                       }
