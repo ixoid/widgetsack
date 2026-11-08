@@ -275,6 +275,10 @@ async fn main() -> Result<(), ()> {
                 // without this the WASAPI loopback + FFT thread keeps running for a dead consumer.
                 let spectrum = window.app_handle().state::<audio::SpectrumState>();
                 audio::forget_window(&spectrum, window.label());
+                // Same for the camera stream: a destroyed webview never unsubscribes, and the RTSP
+                // session must not outlive its last viewer.
+                let camera = window.app_handle().state::<fork::camera::CameraState>();
+                fork::camera::forget_window(&camera, window.label());
                 if window.label() == "studio" {
                     let agent = window
                         .app_handle()
@@ -321,6 +325,7 @@ async fn main() -> Result<(), ()> {
         .manage(agenda::AgendaState::default())
         .manage(fork::hwinfo::HwinfoState::default())
         .manage(fork::server_check::ServerCheckState::default())
+        .manage(fork::camera::CameraState::default())
         .manage(timings::SubsystemTimings::default())
         .manage(sensors::ActiveSensors::default())
         .manage(audio::SpectrumState::default())
@@ -461,6 +466,12 @@ async fn main() -> Result<(), ()> {
             fork::server_check::server_check_config_status,
             fork::server_check::server_check_connect,
             fork::server_check::server_check_disconnect,
+            fork::camera::commands::save_camera_config,
+            fork::camera::commands::camera_config_status,
+            fork::camera::commands::camera_probe,
+            fork::camera::commands::camera_subscribe,
+            fork::camera::commands::camera_unsubscribe,
+            fork::camera::commands::camera_ack,
             timings::set_subsystem_profiling,
             timings::subsystem_timings,
             llm::save_llm_config,

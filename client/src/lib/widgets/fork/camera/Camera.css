@@ -1,0 +1,57 @@
+/* Camera widget — black stage, the decoded canvas, a centred state line and an optional caption.
+   Tokens only (--np-*), except the stage itself: no theme token means black, and video needs it.
+   While waiting the stage is plain black (no dimmed last frame): the canvas is hidden, not filtered. */
+.cam {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
+	/* A video stage is black whatever the theme, so the state text is a fixed light colour paired
+	   with it: --np-muted is dark on light themes and would vanish on the black. The caption has
+	   its own themed background and stays on tokens. */
+	--cam-stage-fg: rgba(255, 255, 255, 0.7);
+	background: #000;
+	font-family: var(--np-font-display, 'Bahnschrift', 'Arial Narrow', sans-serif);
+	color: var(--np-fg, rgb(255, 255, 255));
+}
+.cam-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+/* Never show a stale frame: the canvas is visible only while the stream is live. */
+.cam:not([data-view='live']) .cam-canvas {
+	visibility: hidden;
+}
+.cam-fit-contain {
+	object-fit: contain;
+}
+.cam-fit-cover {
+	object-fit: cover;
+}
+.cam-state {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-2, 6px);
+	text-align: center;
+	font-size: var(--np-text-body, 14px);
+	line-height: var(--np-line-body, 20px);
+	text-wrap: balance;
+	overflow-wrap: anywhere;
+	color: var(--cam-stage-fg);
+}
+.cam-caption {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	padding: var(--space-1, 2px) var(--space-2, 6px);
+	font-size: var(--np-text-caption, 12px);
+	line-height: var(--np-line-caption, 16px);
+	color: var(--np-fg, rgb(255, 255, 255));
+	background: var(--np-bg, rgba(10, 10, 12, 0.6));
+}

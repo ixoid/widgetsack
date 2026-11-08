@@ -30,7 +30,84 @@ or it is blind.
 
 ## MEDIUM
 
+### [owner] Notification feed widget — toasts missed during games
+- **Severity:** MEDIUM
+- **File:** docs/PRODUCT_ROADMAP.md (N-1)
+- **Found by:** owner (2026-11-08, mid-session request)
+- **Feature:** notifications feed (new vector N)
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** «хочу виджет с уведомлениями. часто прилетают пока в игре — а посмотреть потом негде. лента их нужна какая-то» — a scrollable feed of recent Windows toasts on the overlay. Filed as roadmap item N-1 with a research step (WinRT UserNotificationListener vs read-only wpndatabase.db).
+- **Fix:** run `/feature` on N-1 after C-1 (or `/sprint` picks it up).
+- **Check:** `grep -c "### [N-1]" docs/PRODUCT_ROADMAP.md` → 1 now; closes when N-1 is marked done in the roadmap.
+
 ## LOW / Cosmetic
+
+### [qa] Camera: decoder-side unsupportedCodec and subscribe `unavailable` never recover without a remount
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/fork/camera/camera-session.ts:101-107,157`, `camera-model.ts:172-179`
+- **Found by:** security-qa-reviewer (pre-merge gate, run C-1-20261108-1134)
+- **Feature:** C-1 camera widget
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** when `isConfigSupported` is false the session unsubscribes and goes deaf; a `subscribeFailed` other than refused is terminal too. After the owner fixes the stream or the config in Studio, an always-visible overlay widget keeps the old text until it is hidden and shown or remounted (the Rust side restarts, but this widget is no longer subscribed).
+- **Fix:** let the session listen for a config-saved signal (e.g. re-run the session when `camera_config_status` changes, or a Tauri event emitted by `save_camera_config`), or fold into the live-stall restart from the pre-merge HIGH.
+- **Check:** Vitest: "a terminal unsupportedCodec session restarts after a config save" → passes; manual: H.265 stream → fix in Studio → overlay widget goes live without hide/show.
+
+### [qa] Camera: occlusion is not detected, the decoder keeps running under a fullscreen app
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/fork/camera/camera-session.ts` (hidden rule), `widgetsack/src/fork/camera/registry.rs`
+- **Found by:** architect + owner (spike S9 skipped, accepted for v1; run C-1-20261108-1134)
+- **Feature:** C-1 camera widget
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** the session stops only on `document.hidden`. A topmost click-through overlay covered by a fullscreen game may never get `hidden`, so RTSP (about 1.1–1.6 Mbit/s), the decoder and the canvas keep running while nobody sees them. Owner skipped S9; cost accepted.
+- **Fix:** Rust-side occlusion detection (foreground fullscreen window or display off, as `clickthrough.rs`/window-layer code already knows) that drives the same grace + unsubscribe path; or measure S9 first and drop the item if `hidden` does fire.
+- **Check:** none until built — manual: start a fullscreen game, `camera_subscribe` count and the lock's RTSP session drop within about 4 s.
+
+### [qa] Camera: no `isTypeSupported`/MSE (A′) fallback if WebCodecs cannot decode
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/fork/camera/camera-decoder.ts`
+- **Found by:** architect (ADR-005, option A′)
+- **Feature:** C-1 camera widget
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** spike GO showed `VideoDecoder` works on this machine, so the fMP4-muxed MSE `<video>` renderer was never built. A WebView2 without WebCodecs H.264 shows "Video decoder unavailable" and nothing else.
+- **Fix:** only if it ever bites: mux length-prefixed AUs to fMP4 in TS and feed `MediaSource` when `MediaSource.isTypeSupported(codec)`; Rust unchanged.
+- **Check:** none — build on demand.
+
+### [qa] Camera: pre-existing `v8 ignore` markers in new code
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/fork/camera/camera-decoder.ts:163`, `client/src/lib/widgets/fork/camera/CameraSettings.tsx:58`
+- **Found by:** qa-reviewer (review-f3, note only)
+- **Feature:** C-1 camera widget
+- **Date:** 2026-11-08
+- **Status:** open — checked 2026-11-08 (pre-merge gate, HEAD 260b4b6): `git grep -n "v8 ignore" -- client/src/lib/widgets/fork/camera` → one hit, `CameraSettings.tsx:58` (already has a WHY: Save/Clear are disabled for invalid or in-flight submits); the `camera-decoder.ts:163` marker was removed by fix-f3.
+- **Description:** two coverage-ignore markers sit in fork camera code from earlier batches; they hide branches from the 100 % ratchet.
+- **Fix:** cover the branches with the injected fakes and remove the markers, or add a one-line WHY to each.
+- **Check:** `grep -rn "v8 ignore" client/src/lib/widgets/fork/camera` → no output (positive control: the same grep over `client/src/lib` finds upstream markers).
+
+### [qa] Upstream `reconcileOverlays` info log floods while Studio is open
+- **Severity:** LOW
+- **File:** `client/src/lib/overlay.ts:~856` ("legacy key mapping" log)
+- **Found by:** coordinator observation (run C-1-20261108-1134); upstream code, do not fix in the fork
+- **Feature:** upstream overlay reconcile
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** with Studio open, the "legacy key mapping (hints: …)" info line is written on every reconcile, 500+ lines per session in the dev log. Noise only; it hides real lines when grepping `work/tauri-dev.log`.
+- **Fix:** note only. If it matters, log on change of the mapping, or report upstream; a fork edit would add merge friction in `overlay.ts`.
+- **Check:** `grep -c "legacy key mapping" work/tauri-dev.log` after a long Studio session → large count (reproduces).
+
+### [owner] CPU and GPU cards: same gauge order (temperature and clock swap places)
+- **Severity:** LOW
+- **File:** `examples/layouts/own-desktop.widgets.json` (CPU card gauges on `hw.cpu.clock.max` / `hw.cpu.temp`; GPU card gauges) — live layout `%APPDATA%io.github.gyngwidgets.json`
+- **Found by:** owner (2026-11-08)
+- **Feature:** owner desktop layout
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** «упорядочить иконки в цпу и гпу одинаково. сейчас там температура и герцовка в разных частях — визуально сложно быстро показания понять». Overlay 2026-11-08: GPU card reads Load → Temp → Clock, CPU card reads Load → MHz → Temp. Same metric should sit in the same position on both cards.
+- **Fix:** layout-only change (no code): after `scripts/snapshot-layout.ps1`, reorder the CPU card gauges to Load → Temp → Clock (GPU order; temperature next to load as the "health" pair) or the GPU card to match the CPU — owner picks in Studio or the coordinator edits the example + the owner confirms copying it over the live file (needs an explicit «да»). Commit `chore(layout): …`.
+- **Check:** overlay screenshot (`CopyFromScreen(1406, 2160, …, 2560×720)`) shows Temp and Clock gauges in the same column position on both cards; `git diff` of the example layout touches only the gauge order inside the two cards.
 
 ### [qa] Yahoo symbol help lost code formatting
 - **Severity:** LOW

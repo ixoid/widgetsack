@@ -933,3 +933,15 @@ Upcoming events grouped into Today, Tomorrow and This week, with a countdown to 
 | `showCountdown` | toggle | true |  | show a "Next … in 25 min" strip above the groups |
 | `showLater` | toggle | false |  | also list events a week or more away under "Later" |
 | `color` | color |  |  | time / countdown / today colour (blank = theme accent) |
+
+### Camera — `camera`
+
+Live video from the RTSP camera configured in Plugins → Camera. Shows a short status line instead of a picture while connecting, offline or misconfigured.
+
+- **Default size:** 320×180
+
+| key | type | default | options / range | description |
+| --- | --- | --- | --- | --- |
+| `fit` | select | "contain" | `contain`, `cover` | contain keeps the whole picture, cover fills the box and crops |
+| `caption` | text | "" |  | optional label along the bottom edge |
+| `showState` | toggle | true |  | show «connecting», «no signal» and similar over the picture |

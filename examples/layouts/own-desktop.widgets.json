@@ -68,7 +68,7 @@
             },
             "config": {
               "h": 440,
-              "w": 900,
+              "w": 496,
               "x": 448,
               "y": 248
             },
@@ -183,6 +183,24 @@
               "y": 24
             },
             "type": "ticker"
+          }
+        },
+        {
+          "id": "camera-2p5297",
+          "unit": {
+            "config": {
+              "caption": "",
+              "fit": "contain",
+              "showState": true
+            },
+            "id": "camera-2p5297",
+            "rect": {
+              "h": 448,
+              "w": 624,
+              "x": 1464,
+              "y": 248
+            },
+            "type": "camera"
           }
         }
       ],
