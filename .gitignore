@@ -21,3 +21,6 @@ settings.json
 
 # ZCode — планы сессий транзитные; .zcode/config.json коммитится
 .zcode/plans/
+
+# fork release installers (scripts/release-fork.ps1)
+dist/
