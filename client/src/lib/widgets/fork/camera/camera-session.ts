@@ -6,6 +6,7 @@
 import { Channel } from '@tauri-apps/api/core';
 import { cameraSubscribe, cameraUnsubscribe } from './camera-commands';
 import {
+	clearCanvas,
 	createCameraDecoder,
 	type CameraDecoder,
 	type CanvasLike,
@@ -52,11 +53,35 @@ export function startCameraSession(
 ): () => void {
 	let stopped = false;
 	let heard = false;
+	let unsubscribed = false;
+	// A decoder problem is sticky: a later wire status (`live` is sent right after the keyframe)
+	// must not hide it. A new CONFIG (reconnect / config change) or a resubscribe clears it.
+	let problem: DecoderProblem | null = null;
 	const stats = createCameraStats(deps.now());
 	const show = (v: CameraView) => {
-		if (!stopped) onView(v);
+		if (stopped) return;
+		// Only `live` may leave pixels on screen: a later show starts black, not on a stale frame.
+		if (v !== 'live') clearCanvas(canvas);
+		onView(v);
 	};
-	const decoder = deps.createDecoder(canvas, show);
+	const showStatus = (v: CameraView) => {
+		if (!problem) show(v);
+	};
+	const release = () => {
+		if (unsubscribed) return;
+		unsubscribed = true;
+		void enqueue(() => deps.unsubscribe(key)).catch(() => undefined);
+	};
+	const onProblem = (p: DecoderProblem) => {
+		problem = p;
+		show(p);
+		if (p === 'unsupportedCodec') {
+			// the backend would keep sending frames nobody can decode: stop it and go deaf
+			channel.onmessage = () => undefined;
+			release();
+		}
+	};
+	const decoder = deps.createDecoder(canvas, onProblem);
 	const channel = deps.createChannel();
 
 	channel.onmessage = (msg) => {
@@ -69,7 +94,8 @@ export function startCameraSession(
 			}
 			if (parsed.kind === 'config') {
 				stats.config(parsed.codec, parsed.width, parsed.height);
-				decoder.configure(parsed).catch(() => show('unsupportedCodec'));
+				problem = null;
+				decoder.configure(parsed).catch(() => onProblem('unsupportedCodec'));
 			} else {
 				stats.frame({
 					tsUs: parsed.tsUs,
@@ -81,7 +107,7 @@ export function startCameraSession(
 			}
 		} else if (isStatusMsg(msg)) {
 			heard = true;
-			show(viewFromStatus(msg));
+			showStatus(viewFromStatus(msg));
 		}
 	};
 
@@ -93,7 +119,7 @@ export function startCameraSession(
 	void enqueue(async () => {
 		if (stopped) return;
 		const status = await deps.subscribe(channel, key);
-		if (!heard) show(viewFromWire(status.state));
+		if (!heard) showStatus(viewFromWire(status.state));
 	}).catch(() => show('unavailable'));
 
 	return () => {
@@ -102,7 +128,7 @@ export function startCameraSession(
 		channel.onmessage = () => undefined;
 		decoder.close();
 		publishDiagnostics(null);
-		void enqueue(() => deps.unsubscribe(key)).catch(() => undefined);
+		release();
 	};
 }
 
@@ -133,6 +159,7 @@ export function runCameraStream(
 		}
 	};
 	document.addEventListener('visibilitychange', onVisibility);
+	onVisibility(); // a widget mounted in an already hidden page must not stream until the next event
 	return () => {
 		document.removeEventListener('visibilitychange', onVisibility);
 		clearTimeout(timer);

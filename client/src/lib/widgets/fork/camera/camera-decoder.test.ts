@@ -3,6 +3,7 @@ import {
 	browserDeps,
 	createCameraDecoder,
 	createErrorBurst,
+	clearCanvas,
 	type CanvasLike,
 	type DecoderConfig,
 	type DecoderDeps,
@@ -77,7 +78,7 @@ function setup(supported = true) {
 		cancel,
 		now: () => clock
 	};
-	const ctx = { drawImage: vi.fn() };
+	const ctx = { drawImage: vi.fn(), clearRect: vi.fn() };
 	const canvas: CanvasLike = { width: 0, height: 0, getContext: () => ctx };
 	const problems: string[] = [];
 	const dec = createCameraDecoder(canvas, (p) => problems.push(p), deps);
@@ -174,6 +175,29 @@ describe('camera decoder', () => {
 		t.flush();
 		expect([t.canvas.width, t.canvas.height]).toEqual([10, 20]);
 		expect(f.close).toHaveBeenCalledTimes(1);
+	});
+
+	it('closes the frame even when drawImage throws', async () => {
+		const t = setup();
+		await t.dec.configure(CONFIG);
+		t.ctx.drawImage.mockImplementationOnce(() => {
+			throw new Error('canvas lost');
+		});
+		const f = t.mkFrame();
+		t.decoders[0].output(f);
+		expect(() => t.flush()).toThrow('canvas lost');
+		expect(f.close).toHaveBeenCalledTimes(1);
+		expect(t.dec.counters().drawn).toBe(0);
+	});
+
+	it('clearCanvas blanks the whole canvas and tolerates a missing context', () => {
+		const t = setup();
+		t.canvas.width = 30;
+		t.canvas.height = 20;
+		clearCanvas(t.canvas);
+		expect(t.ctx.clearRect).toHaveBeenCalledWith(0, 0, 30, 20);
+		t.canvas.getContext = () => null;
+		expect(() => clearCanvas(t.canvas)).not.toThrow();
 	});
 
 	it('close() tears down: closes decoder and pending frame, cancels the animation frame', async () => {

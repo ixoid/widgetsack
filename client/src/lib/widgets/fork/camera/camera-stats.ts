@@ -31,6 +31,8 @@ export function createCameraStats(startMs: number, windowMs = 5000) {
 			codec = c;
 			width = w;
 			height = h;
+			// a reconnect restarts the stream clock near 0; old stamps would skew the GOP mean
+			keyTs = [];
 		},
 		frame(f: { tsUs: number; size: number; keyframe: boolean; nowMs: number }) {
 			frames++;

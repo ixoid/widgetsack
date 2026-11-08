@@ -31,7 +31,10 @@ export type DecoderDeps = {
 export type CanvasLike = {
 	width: number;
 	height: number;
-	getContext(id: '2d'): { drawImage(frame: never, x: number, y: number): void } | null;
+	getContext(id: '2d'): {
+		drawImage(frame: never, x: number, y: number): void;
+		clearRect(x: number, y: number, w: number, h: number): void;
+	} | null;
 };
 
 export type DecoderProblem = 'unsupportedCodec' | 'decodeError';
@@ -46,6 +49,11 @@ export function createErrorBurst(limit = ERROR_BURST, windowMs = ERROR_WINDOW_MS
 		stamps = [...stamps.filter((t) => nowMs - t < windowMs), nowMs];
 		return stamps.length >= limit;
 	};
+}
+
+/** Blank the canvas so a later show starts black, never on the last decoded frame. */
+export function clearCanvas(canvas: CanvasLike): void {
+	canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 export const browserDeps = (): DecoderDeps => ({
@@ -103,9 +111,12 @@ export function createCameraDecoder(
 		const h = frame.displayHeight ?? canvas.height;
 		if (canvas.width !== w) canvas.width = w;
 		if (canvas.height !== h) canvas.height = h;
-		canvas.getContext('2d')?.drawImage(frame as never, 0, 0);
-		frame.close();
-		drawn++;
+		try {
+			canvas.getContext('2d')?.drawImage(frame as never, 0, 0);
+			drawn++;
+		} finally {
+			frame.close();
+		}
 	};
 
 	const output = (frame: FrameLike) => {

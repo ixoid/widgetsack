@@ -16,6 +16,18 @@ describe('camera stats', () => {
 		});
 	});
 
+	it('forgets the old stream clock on a new CONFIG (reconnect)', () => {
+		const s = createCameraStats(0);
+		const key = (tsUs: number) => s.frame({ tsUs, size: 10, keyframe: true, nowMs: 10 });
+		key(50_000_000);
+		key(52_000_000);
+		s.config('avc1.4d002a', 640, 360);
+		expect(s.snapshot(20, 0).gopSeconds).toBeNull();
+		key(0); // the clock restarted near zero
+		key(2_000_000);
+		expect(s.snapshot(20, 0).gopSeconds).toBeCloseTo(2, 5);
+	});
+
 	it('derives GOP, time to first keyframe and bitrate from a synthetic sequence', () => {
 		const s = createCameraStats(1000);
 		s.config('avc1.4d002a', 1920, 1080);

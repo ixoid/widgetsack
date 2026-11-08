@@ -33,10 +33,12 @@ const STATUS: CameraStatus = {
 function rig() {
 	const channels: { onmessage: (m: unknown) => void }[] = [];
 	const decoded: unknown[] = [];
+	const closes = vi.fn();
+	const sessionDecoderCloses: ReturnType<typeof vi.fn>[] = [];
 	let output: (f: FrameLike) => void = () => undefined;
 	let raf: (() => void) | null = null;
 	const drawImage = vi.fn();
-	const canvas = { width: 0, height: 0, getContext: () => ({ drawImage }) };
+	const canvas = { width: 0, height: 0, getContext: () => ({ drawImage, clearRect: vi.fn() }) };
 	const dd: DecoderDeps = {
 		isSupported: async () => true,
 		create: (init) => {
@@ -44,7 +46,7 @@ function rig() {
 			const d: DecoderLike = {
 				configure: () => undefined,
 				decode: (c) => decoded.push(c),
-				close: () => undefined
+				close: closes
 			};
 			return d;
 		},
@@ -64,13 +66,19 @@ function rig() {
 		},
 		subscribe: vi.fn(async () => STATUS),
 		unsubscribe: vi.fn(async () => undefined),
-		createDecoder: (_c, onProblem): CameraDecoder => createCameraDecoder(canvas, onProblem, dd),
+		createDecoder: (_c, onProblem): CameraDecoder => {
+			const d = createCameraDecoder(canvas, onProblem, dd);
+			sessionDecoderCloses.push(vi.spyOn(d, 'close'));
+			return d;
+		},
 		now: () => 0
 	};
 	return {
 		deps,
 		channels,
 		decoded,
+		closes,
+		sessionDecoderCloses,
 		drawImage,
 		canvas,
 		emit: (f: FrameLike) => output(f),
@@ -128,12 +136,24 @@ describe('useCameraStream', () => {
 		});
 		// the first (cancelled) mount never reached the backend; the second did
 		expect(r.deps.subscribe).toHaveBeenCalledTimes(1);
+		// the discarded first mount's session decoder was closed, the live one is still open
+		expect(r.sessionDecoderCloses).toHaveLength(2);
+		expect(r.sessionDecoderCloses[0]).toHaveBeenCalledTimes(1);
+		expect(r.sessionDecoderCloses[1]).not.toHaveBeenCalled();
+		await act(async () => {
+			r.channels.at(-1)?.onmessage(CONFIG);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
 		unmount();
 		await act(async () => {
 			await Promise.resolve();
 			await Promise.resolve();
 		});
 		expect(r.deps.unsubscribe).toHaveBeenCalledWith('k');
+		expect(r.sessionDecoderCloses[1]).toHaveBeenCalledTimes(1);
+		// the surviving mount's VideoDecoder is closed on teardown
+		expect(r.closes).toHaveBeenCalledTimes(1);
 	});
 
 	it('does nothing without a mounted canvas', () => {

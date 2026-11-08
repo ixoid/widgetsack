@@ -85,6 +85,8 @@ function fakes(subscribeState: CameraStatus['state'] = 'connecting') {
 	};
 }
 const canvas = { width: 0, height: 0, getContext: () => null };
+const clearRect = vi.fn();
+const drawnCanvas = { width: 4, height: 3, getContext: () => ({ drawImage: vi.fn(), clearRect }) };
 const flush = async () => {
 	for (let i = 0; i < 20; i++) await Promise.resolve();
 };
@@ -154,6 +156,61 @@ describe('camera session', () => {
 		stop();
 		f.problem('decodeError'); // after stop: no view update
 		expect(f.views.at(-1)).toBe('unsupportedCodec');
+	});
+
+	it('keeps a decoder problem on screen when a later live status arrives', async () => {
+		const f = fakes();
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		f.problem('decodeError');
+		f.channels[0].onmessage({ kind: 'status', state: 'live' });
+		expect(f.views.at(-1)).toBe('decodeError');
+		f.channels[0].onmessage(CONFIG); // a new CONFIG gives the decoder a fresh chance
+		f.channels[0].onmessage({ kind: 'status', state: 'live' });
+		expect(f.views.at(-1)).toBe('live');
+		stop();
+	});
+
+	it('does not let the subscribe result hide a decoder problem that came first', async () => {
+		const f = fakes('live');
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		f.problem('decodeError');
+		await flush();
+		expect(f.views).toEqual(['decodeError']);
+		stop();
+	});
+
+	it('unsubscribes once on an unsupported codec, goes deaf, and does not resubscribe', async () => {
+		const f = fakes();
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		vi.mocked(f.decoder.configure).mockRejectedValueOnce(new Error('no codec'));
+		f.channels[0].onmessage(CONFIG);
+		await flush();
+		expect(f.views.at(-1)).toBe('unsupportedCodec');
+		expect(f.order).toEqual(['sub:k', 'unsub:k']);
+		f.channels[0].onmessage(KEY);
+		f.channels[0].onmessage({ kind: 'status', state: 'live' });
+		expect(f.decoder.push).not.toHaveBeenCalled();
+		expect(f.views.at(-1)).toBe('unsupportedCodec');
+		stop(); // teardown must not unsubscribe a second time
+		await flush();
+		expect(f.order).toEqual(['sub:k', 'unsub:k']);
+	});
+
+	it('clears the canvas on every non-live view and not on live', async () => {
+		const f = fakes();
+		clearRect.mockClear();
+		const stop = startCameraSession('k', drawnCanvas, f.onView, f.deps);
+		await flush();
+		expect(clearRect).toHaveBeenCalledTimes(1); // connecting
+		f.channels[0].onmessage({ kind: 'status', state: 'live' });
+		expect(clearRect).toHaveBeenCalledTimes(1);
+		f.channels[0].onmessage({ kind: 'status', state: 'retrying', retryInMs: 1000 });
+		expect(f.views.at(-1)).toBe('noSignal');
+		expect(clearRect).toHaveBeenCalledTimes(2);
+		expect(clearRect).toHaveBeenLastCalledWith(0, 0, 4, 3);
+		stop();
 	});
 
 	it('shows "unavailable" when the subscribe is refused', async () => {
@@ -237,6 +294,17 @@ describe('runCameraStream visibility', () => {
 		setHidden(true); // listener removed: no timer, nothing more
 		vi.advanceTimersByTime(HIDE_DEBOUNCE_MS);
 		expect(f.order.filter((o) => o === 'unsub:k')).toHaveLength(2);
+	});
+
+	it('a widget mounted in an already hidden page stops after the debounce', async () => {
+		setHidden(true);
+		const f = fakes();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await flush();
+		vi.advanceTimersByTime(HIDE_DEBOUNCE_MS);
+		await flush();
+		expect(f.order).toEqual(['sub:k', 'unsub:k']);
+		stop();
 	});
 
 	it('teardown while hidden-and-stopped does not stop twice', async () => {

@@ -1,6 +1,7 @@
 // Camera widget (binds:'none', self-sourcing): a canvas the decoder draws into, and a text overlay
-// for every non-live state (black + «connecting» while waiting for the keyframe, never a stale
-// frame). The stream key is derived from the widget instance; one camera config serves them all.
+// for every non-live state. Black + «connecting» while waiting for the keyframe, never a stale
+// frame: Camera.css hides the canvas unless data-view is 'live', and the session clears it when
+// leaving live. The stream key is derived from the widget instance; one camera config serves them all.
 import { useId, useRef } from 'react';
 import { VIEW_TEXT } from './camera-view';
 import { useCameraStream } from './useCameraStream';

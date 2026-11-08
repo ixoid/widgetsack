@@ -6,7 +6,8 @@
 	height: 100%;
 	box-sizing: border-box;
 	overflow: hidden;
-	background: var(--np-bg-solid, rgb(0, 0, 0));
+	/* a video stage is black whatever the theme */
+	background: #000;
 	font-family: var(--np-font-display, 'Bahnschrift', 'Arial Narrow', sans-serif);
 	color: var(--np-fg, rgb(255, 255, 255));
 }
@@ -14,6 +15,10 @@
 	display: block;
 	width: 100%;
 	height: 100%;
+}
+/* Never show a stale frame: the canvas is visible only while the stream is live. */
+.cam:not([data-view='live']) .cam-canvas {
+	visibility: hidden;
 }
 .cam-fit-contain {
 	object-fit: contain;
@@ -33,7 +38,7 @@
 	line-height: var(--np-line-body, 20px);
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
-	color: var(--np-label, rgba(255, 255, 255, 0.6));
+	color: var(--np-muted, rgba(255, 255, 255, 0.6));
 }
 .cam-caption {
 	position: absolute;
@@ -44,5 +49,5 @@
 	font-size: var(--np-text-caption, 12px);
 	line-height: var(--np-line-caption, 16px);
 	color: var(--np-fg, rgb(255, 255, 255));
-	background: var(--np-scrim, rgba(0, 0, 0, 0.45));
+	background: var(--np-bg, rgba(10, 10, 12, 0.6));
 }

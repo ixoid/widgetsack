@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CameraView } from './camera-view';
@@ -13,25 +14,54 @@ vi.mock('./useCameraStream', () => ({
 }));
 
 import Camera from './Camera';
-import { VIEW_TEXT } from './camera-view';
 
 beforeEach(() => {
 	view = 'connecting';
 });
 
+// Literal copy for every state (not VIEW_TEXT itself), so a wrong string fails here.
+const EXPECTED: Record<CameraView, string> = {
+	connecting: 'connecting',
+	live: '',
+	noSignal: 'no signal',
+	authFailed: 'auth failed — see Plugins → Camera',
+	unsupportedCodec: 'unsupported codec',
+	notFound: 'stream not found — check the address in Plugins → Camera',
+	protocolError: 'protocol error — check the stream path',
+	notConfigured: 'not configured',
+	decodeError: 'decode error',
+	unavailable: 'camera unavailable'
+};
+
 describe('Camera widget', () => {
-	it.each([
-		'connecting',
-		'noSignal',
-		'authFailed',
-		'unsupportedCodec',
-		'notConfigured',
-		'notFound',
-		'protocolError'
-	] as const)('renders the %s text', (v) => {
-		view = v;
-		render(<Camera />);
-		expect(screen.getByRole('status').textContent).toBe(VIEW_TEXT[v]);
+	it.each(Object.keys(EXPECTED).filter((v) => v !== 'live') as CameraView[])(
+		'renders the literal %s text',
+		(v) => {
+			view = v;
+			render(<Camera />);
+			expect(screen.getByRole('status').textContent).toBe(EXPECTED[v]);
+		}
+	);
+
+	it('marks the stage with the view: live only while live, so the canvas shows only then', () => {
+		view = 'noSignal';
+		const { container, rerender } = render(<Camera />);
+		const stage = container.querySelector('.cam');
+		expect(stage?.getAttribute('data-view')).toBe('noSignal');
+		view = 'live';
+		rerender(<Camera />);
+		expect(stage?.getAttribute('data-view')).toBe('live');
+		view = 'connecting';
+		rerender(<Camera />);
+		expect(stage?.getAttribute('data-view')).toBe('connecting');
+	});
+
+	it('ships the CSS rule that hides the canvas whenever the view is not live', () => {
+		// vitest runs from client/; CSS imports are stubbed to '' so read the file itself
+		const css = readFileSync('src/lib/widgets/fork/camera/Camera.css', 'utf8');
+		expect(css).toMatch(
+			/\.cam:not\(\[data-view='live'\]\) \.cam-canvas\s*\{\s*visibility:\s*hidden;/
+		);
 	});
 
 	it('shows no text when live, and hides the text when showState is off', () => {
