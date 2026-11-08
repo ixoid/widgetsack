@@ -77,7 +77,7 @@ pub async fn run(
     let config = config
         .filter(|c| config::validate_address(&c.url).is_ok())
         .ok_or_else(|| ERR_NOT_CONFIGURED.to_string())?;
-    let described = worker::describe(&config, step_timeout).await;
+    let described = worker::describe(&config, step_timeout, None).await;
     drop(config);
     let (session, stream_i) = match described {
         Ok(v) => v,

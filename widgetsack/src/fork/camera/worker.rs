@@ -22,7 +22,8 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use retina::client::{
-    Credentials, Demuxed, Described, PlayOptions, Session, SessionOptions, SetupOptions, Transport,
+    Credentials, Demuxed, Described, PlayOptions, Session, SessionGroup, SessionOptions,
+    SetupOptions, Transport,
 };
 use retina::codec::{CodecItem, FrameFormat, ParametersRef};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -40,6 +41,9 @@ use super::types::{CameraErrorKind, StatusEvent, StreamState};
 pub const STEP_TIMEOUT: Duration = Duration::from_secs(10);
 pub const ITEM_TIMEOUT: Duration = Duration::from_secs(8);
 pub const JOIN_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long a stopping worker waits for its TEARDOWN; below `JOIN_TIMEOUT` so the wait ends before
+/// the stopper would abort the task.
+pub const TEARDOWN_WAIT: Duration = Duration::from_millis(1500);
 pub const MAX_AU_BYTES: usize = 4 * 1024 * 1024;
 
 /// Where the worker's messages go. `false` from either method means the receiver is gone.
@@ -88,14 +92,37 @@ pub struct WorkerHandle {
 impl WorkerHandle {
     /// Must be called inside the tokio runtime (async commands run on Tauri's tokio runtime), so the
     /// task — and the retina session it owns — always lives and drops there.
+    #[cfg(test)]
     pub fn spawn<S: Sink>(
         sink: S,
         load: LoadConfig,
         shared: Arc<Shared>,
         options: WorkerOptions,
     ) -> Self {
-        let (shutdown, rx) = watch::channel(false);
-        let join = tokio::spawn(run(sink, load, shared, options, rx));
+        Self::spawn_after(sink, load, shared, options, None)
+    }
+
+    /// Like `spawn`, but the task first waits until `after` reports `true` (the previous worker has
+    /// stopped and its TEARDOWN settled), so the camera never sees two of our sessions at once. A
+    /// stop request during that wait ends the task without ever connecting.
+    pub fn spawn_after<S: Sink>(
+        sink: S,
+        load: LoadConfig,
+        shared: Arc<Shared>,
+        options: WorkerOptions,
+        after: Option<watch::Receiver<bool>>,
+    ) -> Self {
+        let (shutdown, mut rx) = watch::channel(false);
+        let join = tokio::spawn(async move {
+            if let Some(after) = after {
+                tokio::select! {
+                    biased;
+                    () = wait_shutdown(&mut rx) => return,
+                    () = wait_stopped(after) => {}
+                }
+            }
+            run(sink, load, shared, options, rx).await;
+        });
         Self { shutdown, join }
     }
 
@@ -125,6 +152,7 @@ fn usable(config: Option<CameraConfig>) -> Option<CameraConfig> {
 pub(super) async fn describe(
     config: &CameraConfig,
     step_timeout: Duration,
+    group: Option<Arc<SessionGroup>>,
 ) -> Result<(Session<Described>, usize), CameraErrorKind> {
     let url = Url::parse(&config.url).map_err(|_| CameraErrorKind::Protocol)?;
     // The stored address never has userinfo (config invariant); refuse rather than send it.
@@ -135,7 +163,11 @@ pub(super) async fn describe(
         username: config.username.clone(),
         password: config.password.expose().to_owned(),
     });
-    let options = SessionOptions::default().creds(creds);
+    let mut options = SessionOptions::default().creds(creds);
+    if let Some(group) = group {
+        // Lets the worker wait for the background TEARDOWN that dropping the session starts.
+        options = options.session_group(group);
+    }
     let session = match tokio::time::timeout(step_timeout, Session::describe(url, options)).await {
         Err(_) => return Err(error_map::map(Phase::Describe, None, true)),
         Ok(Err(e)) => return Err(error_map::map(Phase::Describe, e.status_code(), false)),
@@ -212,6 +244,7 @@ pub async fn run<S: Sink>(
     mut shutdown: watch::Receiver<bool>,
 ) {
     let mut backoff = Backoff::new(options.backoff);
+    let group = Arc::new(SessionGroup::default());
     loop {
         // Read before the attempt loads its config, so a save during the attempt is a newer
         // generation than anything this attempt can lock out.
@@ -219,9 +252,13 @@ pub async fn run<S: Sink>(
         let outcome = tokio::select! {
             biased;
             () = wait_shutdown(&mut shutdown) => Outcome::Stop,
-            outcome = attempt(&sink, &load, &shared, &options, generation) => outcome,
+            outcome = attempt(&sink, &load, &shared, &options, generation, &group) => outcome,
         };
         let Outcome::Retry { kind, live_for } = outcome else {
+            // The attempt future is gone, so its session was dropped and a background TEARDOWN is
+            // under way. Whoever stops this worker (and starts the next one) needs it on the wire
+            // first, so wait for it here, bounded: a camera that never answers must not hang us.
+            let _ = tokio::time::timeout(TEARDOWN_WAIT, group.await_teardown()).await;
             return;
         };
         if let Some(live_for) = live_for {
@@ -254,6 +291,15 @@ async fn wait_for_next_try(shared: &Shared, delay: Option<Duration>, generation:
     }
 }
 
+/// Resolves once the flag is `true` or its sender is gone (a cancelled stopper counts as stopped).
+pub(super) async fn wait_stopped(mut rx: watch::Receiver<bool>) {
+    while !*rx.borrow_and_update() {
+        if rx.changed().await.is_err() {
+            return;
+        }
+    }
+}
+
 async fn wait_shutdown(rx: &mut watch::Receiver<bool>) {
     loop {
         if *rx.borrow_and_update() {
@@ -280,6 +326,7 @@ async fn attempt<S: Sink>(
     shared: &Shared,
     options: &WorkerOptions,
     generation: u64,
+    group: &Arc<SessionGroup>,
 ) -> Outcome {
     if shared.auth_locked() {
         sink.status(&status_with_error(
@@ -301,7 +348,7 @@ async fn attempt<S: Sink>(
     if !sink.status(&StatusEvent::new(StreamState::Connecting)) {
         return Outcome::Stop;
     }
-    let described = describe(&config, options.step_timeout).await;
+    let described = describe(&config, options.step_timeout, Some(Arc::clone(group))).await;
     drop(config); // the credentials are no longer needed in this frame
     let (mut session, stream_i) = match described {
         Ok(v) => v,
@@ -940,5 +987,53 @@ mod tests {
         sink.wait_until(|s| retrying(s).len() >= 2).await;
         assert_eq!(fake.accepts(), 2, "a save re-arms exactly one new attempt");
         handle.stop().await;
+    }
+
+    /// Runs a worker against a camera whose first two connections stay live for 120 ms and then
+    /// die, and returns the `retryInMs` of the two resulting `retrying` events.
+    async fn delays_after_live_sessions(reset_after_live: Duration) -> Vec<Option<u64>> {
+        let fake = FakeRtsp::start(FakeOptions {
+            drop_connections: 2,
+            drop_after: Duration::from_millis(120),
+            ..FakeOptions::default()
+        })
+        .await;
+        let sink = VecSink::default();
+        let mut options = fast();
+        options.backoff.reset_after_live = reset_after_live;
+        let config = config_for(&fake.url(), fake_rtsp::USER, fake_rtsp::PASS);
+        let handle = WorkerHandle::spawn(
+            sink.clone(),
+            loader(config),
+            Arc::new(Shared::default()),
+            options,
+        );
+        let delays = |s: &VecSink| -> Vec<Option<u64>> {
+            s.snapshot()
+                .into_iter()
+                .filter_map(|m| match m {
+                    Msg::Status(e) if e.state == StreamState::Retrying => Some(e.retry_in_ms),
+                    _ => None,
+                })
+                .collect()
+        };
+        sink.wait_until(|s| delays(s).len() >= 2).await;
+        handle.stop().await;
+        delays(&sink).into_iter().take(2).collect()
+    }
+
+    #[tokio::test]
+    async fn a_session_that_stayed_live_long_enough_restarts_the_backoff_ladder() {
+        // The worker feeds the session's live time into the ladder: 120 ms live >= the 60 ms
+        // threshold, so the second retry waits the base delay again instead of doubling.
+        assert_eq!(
+            delays_after_live_sessions(Duration::from_millis(60)).await,
+            [Some(50), Some(50)]
+        );
+        // Positive control: the same camera with a threshold it cannot reach keeps climbing.
+        assert_eq!(
+            delays_after_live_sessions(Duration::from_secs(10)).await,
+            [Some(50), Some(100)]
+        );
     }
 }

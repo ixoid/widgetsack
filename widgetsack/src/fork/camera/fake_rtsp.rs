@@ -4,8 +4,9 @@
 //! pictures. The SPS/PPS in `sprop-parameter-sets` are real (1920x1080, Main 4.2) so retina can
 //! build `VideoParameters` (avcC, RFC 6381 codec, dimensions).
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -32,6 +33,11 @@ pub struct FakeOptions {
     pub not_found: bool,
     /// Send a P-slice before the IDR, as a camera joining mid-GOP would.
     pub leading_delta: bool,
+    /// Delay before a TEARDOWN is answered, so a test can observe a stop that is still in progress.
+    pub teardown_delay: Duration,
+    /// How long a dropped connection (see `drop_connections`) stays open after the frames, i.e. how
+    /// long the stream was "live" before it died.
+    pub drop_after: Duration,
 }
 
 impl Default for FakeOptions {
@@ -42,6 +48,8 @@ impl Default for FakeOptions {
             drop_connections: 0,
             not_found: false,
             leading_delta: false,
+            teardown_delay: Duration::ZERO,
+            drop_after: Duration::ZERO,
         }
     }
 }
@@ -49,6 +57,9 @@ impl Default for FakeOptions {
 pub struct FakeRtsp {
     pub port: u16,
     accepts: Arc<AtomicUsize>,
+    /// For each accepted connection, how many TEARDOWNs had been ANSWERED at that moment: shows
+    /// whether a new session opened before the previous one was torn down.
+    replied_at_accept: Arc<Mutex<Vec<usize>>>,
     /// Connections the CLIENT closed (the server read hit EOF), i.e. the session was dropped.
     closed: Arc<AtomicUsize>,
     teardowns: Arc<AtomicUsize>,
@@ -65,8 +76,15 @@ impl FakeRtsp {
         let teardowns = Arc::new(AtomicUsize::new(0));
         let counters = (Arc::clone(&closed), Arc::clone(&teardowns));
         let options = Arc::new(options);
+        let replied = Arc::new(AtomicUsize::new(0));
+        let replied_at_accept = Arc::new(Mutex::new(Vec::new()));
+        let (accept_log, accept_replied) = (Arc::clone(&replied_at_accept), Arc::clone(&replied));
         let task = tokio::spawn(async move {
             while let Ok((sock, _)) = listener.accept().await {
+                accept_log
+                    .lock()
+                    .unwrap()
+                    .push(accept_replied.load(Ordering::SeqCst));
                 let index = counter.fetch_add(1, Ordering::SeqCst);
                 let serving = Serving {
                     options: Arc::clone(&options),
@@ -74,6 +92,7 @@ impl FakeRtsp {
                     index,
                     closed: Arc::clone(&counters.0),
                     teardowns: Arc::clone(&counters.1),
+                    replied: Arc::clone(&accept_replied),
                 };
                 tokio::spawn(serve(sock, serving));
             }
@@ -81,10 +100,16 @@ impl FakeRtsp {
         Self {
             port,
             accepts,
+            replied_at_accept,
             closed,
             teardowns,
             task,
         }
+    }
+
+    /// TEARDOWN replies already sent when each connection (in accept order) was accepted.
+    pub fn replied_at_accept(&self) -> Vec<usize> {
+        self.replied_at_accept.lock().unwrap().clone()
     }
 
     pub fn url(&self) -> String {
@@ -251,6 +276,7 @@ struct Serving {
     index: usize,
     closed: Arc<AtomicUsize>,
     teardowns: Arc<AtomicUsize>,
+    replied: Arc<AtomicUsize>,
 }
 
 /// Counts the connection as closed however `serve` returns (EOF, write error, deliberate drop).
@@ -269,6 +295,7 @@ async fn serve(mut sock: TcpStream, serving: Serving) {
         index,
         closed,
         teardowns,
+        replied,
     } = serving;
     let _closed = ClosedOnDrop(closed);
     let mut buf = Vec::new();
@@ -319,12 +346,15 @@ async fn serve(mut sock: TcpStream, serving: Serving) {
                     return;
                 }
                 if index < options.drop_connections {
+                    tokio::time::sleep(options.drop_after).await;
                     return; // dropping the socket closes the connection mid-stream
                 }
                 continue;
             }
             "TEARDOWN" => {
                 teardowns.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(options.teardown_delay).await;
+                replied.fetch_add(1, Ordering::SeqCst);
                 response("200 OK", &req.cseq, std::slice::from_ref(&session), "")
             }
             _ => response("200 OK", &req.cseq, std::slice::from_ref(&session), ""),

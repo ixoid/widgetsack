@@ -10,7 +10,11 @@ use serde_json::Value;
 pub const ERR_NOT_GRANTED: &str =
     "camera stream is not granted: save a layout with a Camera widget in Studio";
 
-/// True when any object anywhere in the layout has `"type": "camera"`. Rows, columns, grids,
+/// True when any object anywhere in the layout has `"type": "camera"`. This is a documented
+/// compromise, mirroring `layout_grants`: the match is not limited to widget-shaped objects, so a
+/// `"type":"camera"` object inside another widget's free-form config also opens the gate. The
+/// worst case is an overlay watching the camera the owner already configured; tightening to
+/// widgets (a `type` string next to `rect`/`config`/`id`) is a later hardening. Rows, columns, grids,
 /// floating layers and group children nest arbitrarily, so the walk is iterative (no recursion
 /// depth to blow). Corrupt JSON or a non-object root counts as "no camera".
 pub fn layout_has_camera(json: &str) -> bool {

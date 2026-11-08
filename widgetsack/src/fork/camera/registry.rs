@@ -27,12 +27,13 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use tokio::runtime::Handle;
+use tokio::sync::watch;
 
 use super::Shared;
 use super::flow::{Flow, Plan};
 use super::framing::{Kind, classify, with_seq};
 use super::types::{StatusEvent, StreamState};
-use super::worker::{LoadConfig, Sink, WorkerHandle, WorkerOptions};
+use super::worker::{LoadConfig, Sink, WorkerHandle, WorkerOptions, wait_stopped};
 
 /// How long the worker outlives its last subscriber.
 pub const GRACE: Duration = Duration::from_secs(2);
@@ -77,6 +78,30 @@ struct Inner<S> {
     /// Captured at subscribe (always inside the runtime) so `forget_window`, called from the main
     /// thread's window-event callback, can still start the grace timer.
     runtime: Option<Handle>,
+    /// `true` once the most recent stop (worker joined AND its TEARDOWN settled) has completed. A
+    /// worker spawned meanwhile waits on it before its first DESCRIBE, so two RTSP sessions never
+    /// overlap even when a subscribe races a stop.
+    stopping: Option<watch::Receiver<bool>>,
+}
+
+/// Held by whoever stops a worker; completing it releases the workers waiting on `stopping`.
+struct StopTicket {
+    /// The stop before this one, still possibly in progress: this stop is not "done" before it.
+    prev: Option<watch::Receiver<bool>>,
+    done: watch::Sender<bool>,
+}
+
+impl StopTicket {
+    /// Stops `running` (cooperative, bounded) and then announces completion. Awaited with no lock
+    /// held; the ticket was registered under the lock, before the worker left the registry.
+    async fn run(self, running: Running) {
+        running.handle.stop().await;
+        if let Some(prev) = self.prev {
+            wait_stopped(prev).await;
+        }
+        // No receivers left is fine; a dropped sender (cancelled task) also counts as stopped.
+        let _ = self.done.send(true);
+    }
 }
 
 /// Sends one message through a subscriber's flow state. `false` = remove the subscriber (dead
@@ -84,18 +109,31 @@ struct Inner<S> {
 fn deliver<S: Sink>(sub: &mut Subscriber<S>, message: &[u8], kind: Kind, now: Instant) -> bool {
     match kind {
         Kind::Config => {
-            let seq = sub.flow.plan_config();
+            let seq = sub.flow.plan_config(now);
             sub.sink.media(with_seq(message, seq))
         }
         Kind::Frame { key } => match sub.flow.plan_frame(key, now) {
             Plan::Send(seq) => sub.sink.media(with_seq(message, seq)),
             Plan::Skip => true,
+            // Removed without a final status on purpose. `Dead` now means an ack was due (8+ unacked
+            // frames or an unacked keyframe) and the webview stayed silent for 15 s while frames
+            // kept arriving, i.e. it is dead or wedged. A status to a wedged channel is lost too,
+            // and the client's own live-stall watchdog (no frames for 10 s) already turns the view
+            // into `noSignal`. A stream outage never lands here: it does not make acks due.
             Plan::Dead => false,
         },
     }
 }
 
 impl<S: Sink> Inner<S> {
+    /// Takes the worker out of the registry together with the ticket that will announce its stop.
+    fn take_worker(&mut self) -> Option<(Running, StopTicket)> {
+        let running = self.worker.take()?;
+        let (done, rx) = watch::channel(false);
+        let prev = self.stopping.replace(rx);
+        Some((running, StopTicket { prev, done }))
+    }
+
     fn broadcast_status(&mut self, event: &StatusEvent) {
         // The worker repeats `connecting` after the hub announced it; every subscriber needs each
         // distinct status once.
@@ -192,6 +230,7 @@ impl<S: Sink> Hub<S> {
                 grace_epoch: 0,
                 worker_seq: 0,
                 runtime: None,
+                stopping: None,
             }),
             grace,
             #[cfg(test)]
@@ -228,7 +267,7 @@ impl<S: Sink> Hub<S> {
     fn attach(&self, g: &mut Inner<S>, label: &str, key: &str, sink: S, now: Instant) {
         let mut sub = Subscriber {
             sink,
-            flow: Flow::new(now),
+            flow: Flow::new(),
         };
         if g.greet(&mut sub, now) {
             g.subs.insert((label.to_string(), key.to_string()), sub);
@@ -243,11 +282,12 @@ impl<S: Sink> Hub<S> {
             hub: Arc::clone(self),
             worker_id: id,
         };
-        let handle = WorkerHandle::spawn(
+        let handle = WorkerHandle::spawn_after(
             sink,
             Arc::clone(&start.load),
             Arc::clone(&start.shared),
             start.options,
+            g.stopping.clone(),
         );
         g.worker = Some(Running { id, handle, start });
         // Subscribers of a replaced worker learn at once that a new attempt is under way.
@@ -310,18 +350,18 @@ impl<S: Sink> Hub<S> {
 
     /// Stops the worker if the grace period ended with nobody back.
     async fn finish_idle(&self, epoch: u64) {
-        let running = {
+        let stop = {
             let mut g = self.lock();
             if g.grace_epoch == epoch && g.subs.is_empty() {
                 g.cache = Cache::default();
-                g.worker.take()
+                g.take_worker()
             } else {
                 None
             }
         };
-        if let Some(running) = running {
+        if let Some((running, ticket)) = stop {
             // Cooperative: the worker task drops its session (TEARDOWN) itself.
-            running.handle.stop().await;
+            ticket.run(running).await;
         }
         #[cfg(test)]
         self.idle_checks
@@ -330,18 +370,19 @@ impl<S: Sink> Hub<S> {
 
     /// Restarts the session so a saved config applies. No worker (nobody watching) = nothing to do:
     /// the next subscribe loads the new config anyway. The old session is torn down first, so the
-    /// camera never sees two sessions from us.
+    /// camera never sees two sessions from us (a subscribe racing this stop starts its worker
+    /// gated on `stopping`, so it too waits for the TEARDOWN).
     pub async fn restart(self: &Arc<Self>) {
-        let old = {
+        let stop = {
             let mut g = self.lock();
             g.cache = Cache::default();
-            g.worker.take()
+            g.take_worker()
         };
-        let Some(old) = old else {
+        let Some((old, ticket)) = stop else {
             return;
         };
         let start = old.start.clone();
-        old.handle.stop().await;
+        ticket.run(old).await;
         let mut g = self.lock();
         // A subscribe that came in meanwhile has already started a worker with the new config.
         if !g.subs.is_empty() && g.worker.is_none() {
@@ -967,5 +1008,117 @@ mod tests {
         }
         // ... and then it reconnects by itself.
         wait_for("reconnect", || fake.accepts() >= 2).await;
+    }
+
+    fn stop_in_progress(hub: &Hub<RecSink>) -> bool {
+        hub.lock().stopping.as_ref().is_some_and(|rx| !*rx.borrow())
+    }
+
+    #[tokio::test]
+    async fn a_subscribe_during_a_stop_opens_its_session_only_after_the_teardown_was_answered() {
+        // A slow TEARDOWN keeps the stop observable for 300 ms.
+        let fake = FakeRtsp::start(FakeOptions {
+            teardown_delay: Duration::from_millis(300),
+            ..FakeOptions::default()
+        })
+        .await;
+        let shared = Arc::new(Shared::default());
+        let hub = graceful_hub();
+        let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
+        let a = RecSink::new();
+        hub.subscribe("studio", "w1", a.clone(), start.clone());
+        wait_for("live", || a.states().contains(&StreamState::Live)).await;
+
+        hub.unsubscribe("studio", "w1");
+        wait_for("the stop to begin", || stop_in_progress(&hub)).await;
+        let b = RecSink::new();
+        hub.subscribe("studio", "w2", b.clone(), start);
+        wait_for("live again", || {
+            b.media().iter().any(|m| m[0] == KIND_FRAME)
+        })
+        .await;
+
+        assert_eq!(fake.accepts(), 2);
+        // Positive control (by construction): without the stop gate the second connection is
+        // accepted within milliseconds, i.e. while 0 TEARDOWNs have been answered, and this
+        // assertion reads [0, 0] instead of [0, 1].
+        assert_eq!(fake.replied_at_accept(), [0, 1]);
+    }
+
+    #[tokio::test]
+    async fn a_stopped_worker_waiting_for_the_previous_stop_never_connects() {
+        let fake = FakeRtsp::start(FakeOptions {
+            teardown_delay: Duration::from_millis(300),
+            ..FakeOptions::default()
+        })
+        .await;
+        let shared = Arc::new(Shared::default());
+        let hub = graceful_hub();
+        let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
+        let a = RecSink::new();
+        hub.subscribe("studio", "w1", a.clone(), start.clone());
+        wait_for("live", || a.states().contains(&StreamState::Live)).await;
+        hub.unsubscribe("studio", "w1");
+        wait_for("the stop to begin", || stop_in_progress(&hub)).await;
+
+        // A short-lived widget mounts and leaves again while the first stop is still running.
+        hub.subscribe("studio", "w2", RecSink::new(), start);
+        hub.unsubscribe("studio", "w2");
+        wait_for("both stops done", || {
+            idle_checks(&hub) == 2 && !stop_in_progress(&hub)
+        })
+        .await;
+        assert_eq!(
+            fake.accepts(),
+            1,
+            "the gated worker was stopped before it connected"
+        );
+        wait_for("teardown", || fake.closed() == 1 && fake.teardowns() == 1).await;
+    }
+
+    /// Subscribes one widget to a live fake camera and waits for CONFIG + keyframe + 3 deltas.
+    async fn live_subscriber(hub: &Arc<Hub<RecSink>>, fake: &FakeRtsp) -> RecSink {
+        let shared = Arc::new(Shared::default());
+        let start = start_with(config_for(fake, fake_rtsp::PASS), &shared);
+        let a = RecSink::new();
+        hub.subscribe("studio", "w1", a.clone(), start);
+        wait_for("the first frames", || a.media().len() >= 5).await;
+        a
+    }
+
+    #[tokio::test]
+    async fn the_last_subscriber_dropped_for_no_ack_starts_the_grace_and_stops_the_session() {
+        let fake = FakeRtsp::start(FakeOptions::default()).await;
+        let hub = graceful_hub();
+        let _a = live_subscriber(&hub, &fake).await;
+
+        // The keyframe was never acked; 16 s later the next frame finds the subscriber dead.
+        hub.media_at(
+            &delta_msg(),
+            Instant::now() + ACK_TIMEOUT + Duration::from_secs(1),
+        );
+        assert_eq!(hub.subscriber_count(), 0);
+        wait_for("idle check", || idle_checks(&hub) == 1).await;
+        wait_for("teardown", || fake.closed() == 1 && fake.teardowns() == 1).await;
+        assert!(hub.lock().worker.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_subscriber_with_unacked_deltas_survives_a_long_silence_when_no_ack_is_due() {
+        // Positive control of the test above: the keyframe is acked, 3 deltas are not (below the
+        // cadence), which is what a stream outage leaves behind.
+        let fake = FakeRtsp::start(FakeOptions::default()).await;
+        let hub = graceful_hub();
+        let a = live_subscriber(&hub, &fake).await;
+        hub.ack("studio", "w1", 0);
+
+        let before = a.media().len();
+        hub.media_at(
+            &delta_msg(),
+            Instant::now() + ACK_TIMEOUT + Duration::from_secs(1),
+        );
+        assert_eq!(hub.subscriber_count(), 1);
+        assert!(hub.lock().worker.is_some());
+        assert_eq!(a.media().len(), before + 1, "and it keeps being served");
     }
 }
