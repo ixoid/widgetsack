@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CameraView } from './camera-view';
+import type { CameraView } from './camera-model';
 
 let view: CameraView = 'connecting';
 const seen: { key?: string; ref?: unknown } = {};
@@ -21,16 +21,20 @@ beforeEach(() => {
 
 // Literal copy for every state (not VIEW_TEXT itself), so a wrong string fails here.
 const EXPECTED: Record<CameraView, string> = {
-	connecting: 'connecting',
+	connecting: 'Connecting',
 	live: '',
-	noSignal: 'no signal',
-	authFailed: 'auth failed — see Plugins → Camera',
-	unsupportedCodec: 'unsupported codec',
-	notFound: 'stream not found — check the address in Plugins → Camera',
-	protocolError: 'protocol error — check the stream path',
-	notConfigured: 'not configured',
-	decodeError: 'decode error',
-	unavailable: 'camera unavailable'
+	noSignal: 'No signal, retrying',
+	authFailed:
+		'Wrong login or password. If you toggled RTSP LAN Preview in the Aqara Home app, the credentials were regenerated. Enter the new ones in Plugins → Camera.',
+	unsupportedCodec:
+		'Unsupported codec: the camera must send H.264. Change the stream in Plugins → Camera.',
+	notFound: 'Stream not found. Check the address in Plugins → Camera.',
+	protocolError: 'Protocol error. Check the stream path in Plugins → Camera.',
+	notConfigured: 'Camera not set up. Open Plugins → Camera in Studio.',
+	credentialsMissing: 'Login or password not set. Enter them in Plugins → Camera.',
+	decoderUnavailable: 'Video decoder unavailable',
+	decodeError: 'Decode error',
+	refused: 'Save the layout in Studio'
 };
 
 describe('Camera widget', () => {
@@ -62,6 +66,15 @@ describe('Camera widget', () => {
 		expect(css).toMatch(
 			/\.cam:not\(\[data-view='live'\]\) \.cam-canvas\s*\{\s*visibility:\s*hidden;/
 		);
+	});
+
+	it('keeps the stage plain black while waiting: no dimming filter, no stale-frame class', () => {
+		const css = readFileSync('src/lib/widgets/fork/camera/Camera.css', 'utf8');
+		expect(css).not.toMatch(/filter\s*:/);
+		expect(css).not.toMatch(/opacity\s*:/);
+		view = 'noSignal';
+		const { container } = render(<Camera />);
+		expect(container.querySelector('.cam')?.className).toBe('cam');
 	});
 
 	it('shows no text when live, and hides the text when showState is off', () => {

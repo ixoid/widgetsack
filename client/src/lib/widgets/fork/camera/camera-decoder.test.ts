@@ -3,6 +3,7 @@ import {
 	browserDeps,
 	createCameraDecoder,
 	createErrorBurst,
+	QUEUE_LIMIT,
 	clearCanvas,
 	type CanvasLike,
 	type DecoderConfig,
@@ -38,12 +39,14 @@ type FakeDecoder = {
 	error(e: unknown): void;
 };
 
-function setup(supported = true) {
+function setup(supported = true, available = true) {
 	const decoders: FakeDecoder[] = [];
 	let rafCb: (() => void) | null = null;
 	let clock = 0;
+	let queue = 0;
 	const cancel = vi.fn();
 	const deps: DecoderDeps = {
+		available: () => available,
 		isSupported: vi.fn(async () => supported),
 		create: (init) => {
 			const d: FakeDecoder = {
@@ -56,6 +59,9 @@ function setup(supported = true) {
 			};
 			decoders.push(d);
 			const impl: DecoderLike = {
+				get decodeQueueSize() {
+					return queue;
+				},
 				configure: (c) => {
 					d.cfg = c;
 				},
@@ -81,14 +87,23 @@ function setup(supported = true) {
 	const ctx = { drawImage: vi.fn(), clearRect: vi.fn() };
 	const canvas: CanvasLike = { width: 0, height: 0, getContext: () => ctx };
 	const problems: string[] = [];
-	const dec = createCameraDecoder(canvas, (p) => problems.push(p), deps);
+	const draws: number[] = [];
+	const dec = createCameraDecoder(
+		canvas,
+		(p) => problems.push(p),
+		deps,
+		() => draws.push(1)
+	);
 	const mkFrame = (w = 640, h = 360) => ({ close: vi.fn(), displayWidth: w, displayHeight: h });
 	return {
 		dec,
+		deps,
 		decoders,
 		canvas,
 		ctx,
 		problems,
+		draws,
+		setQueue: (n: number) => (queue = n),
 		cancel,
 		mkFrame,
 		flush: () => rafCb?.(),
@@ -111,6 +126,13 @@ describe('camera decoder', () => {
 		const t = setup(false);
 		await t.dec.configure(CONFIG);
 		expect(t.problems).toEqual(['unsupportedCodec']);
+		expect(t.decoders).toHaveLength(0);
+	});
+
+	it('reports decoderUnavailable when the browser has no VideoDecoder', async () => {
+		const t = setup(true, false);
+		await t.dec.configure(CONFIG);
+		expect(t.problems).toEqual(['decoderUnavailable']);
 		expect(t.decoders).toHaveLength(0);
 	});
 
@@ -159,9 +181,19 @@ describe('camera decoder', () => {
 		expect(t.ctx.drawImage).toHaveBeenCalledWith(b, 0, 0);
 		expect(b.close).toHaveBeenCalledTimes(1);
 		expect([t.canvas.width, t.canvas.height]).toEqual([800, 450]);
-		expect(t.dec.counters()).toEqual({ drawn: 1, dropped: 1 });
+		expect(t.dec.counters()).toEqual({ drawn: 1, superseded: 1, dropped: 0 });
+		expect(t.draws).toHaveLength(1);
 		t.flush(); // nothing pending: no draw
 		expect(t.ctx.drawImage).toHaveBeenCalledTimes(1);
+	});
+
+	it('draws without a draw listener (it is optional)', async () => {
+		const t = setup();
+		const quiet = createCameraDecoder(t.canvas, () => undefined, t.deps);
+		await quiet.configure(CONFIG);
+		t.decoders[0].output(t.mkFrame());
+		t.flush();
+		expect(quiet.counters().drawn).toBe(1);
 	});
 
 	it('falls back to the canvas size and tolerates a missing 2D context', async () => {
@@ -250,6 +282,48 @@ describe('camera decoder', () => {
 	});
 });
 
+describe('backpressure and counters', () => {
+	it('drops deltas while the decode queue is over the limit, resumes on a keyframe', async () => {
+		const t = setup();
+		await t.dec.configure(CONFIG);
+		t.dec.push(frame(0, true));
+		t.setQueue(QUEUE_LIMIT); // at the limit is still fine
+		t.dec.push(frame(1, false));
+		t.setQueue(QUEUE_LIMIT + 1);
+		t.dec.push(frame(2, false)); // over: dropped, gate closes
+		t.setQueue(0);
+		t.dec.push(frame(3, false)); // queue recovered but the gate waits for a keyframe
+		t.setQueue(QUEUE_LIMIT + 5);
+		t.dec.push(frame(4, true)); // a keyframe is never dropped for the backlog
+		t.setQueue(0);
+		t.dec.push(frame(5, false));
+		expect(t.decoders[0].chunks.map((c) => (c as { timestamp: number }).timestamp)).toEqual([
+			0, 1000, 4000, 5000
+		]);
+		expect(t.dec.counters()).toEqual({ drawn: 0, superseded: 0, dropped: 2 });
+	});
+
+	it('counts supersession separately from drops', async () => {
+		const t = setup();
+		await t.dec.configure(CONFIG);
+		t.decoders[0].output(t.mkFrame());
+		t.decoders[0].output(t.mkFrame());
+		t.decoders[0].output(t.mkFrame());
+		expect(t.dec.counters()).toEqual({ drawn: 0, superseded: 2, dropped: 0 });
+		t.flush();
+		expect(t.dec.counters()).toEqual({ drawn: 1, superseded: 2, dropped: 0 });
+	});
+
+	it('counts gate discards and decode errors as dropped, not superseded', async () => {
+		const t = setup();
+		t.dec.push(frame(0, true)); // no decoder yet
+		await t.dec.configure(CONFIG);
+		t.dec.push(frame(1, false)); // before the keyframe gate
+		t.decoders[0].error(new Error('x')); // decode error
+		expect(t.dec.counters()).toEqual({ drawn: 0, superseded: 0, dropped: 3 });
+	});
+});
+
 describe('createErrorBurst', () => {
 	it('fires at the limit inside the window only', () => {
 		const hit = createErrorBurst(3, 10_000);
@@ -265,6 +339,11 @@ describe('createErrorBurst', () => {
 
 describe('browserDeps', () => {
 	afterEach(() => vi.unstubAllGlobals());
+
+	it('reports no VideoDecoder when the global is absent', () => {
+		vi.stubGlobal('VideoDecoder', undefined);
+		expect(browserDeps().available()).toBe(false);
+	});
 
 	it('wraps the WebCodecs globals', async () => {
 		const made: unknown[] = [];
@@ -288,6 +367,7 @@ describe('browserDeps', () => {
 		const cancel = vi.fn();
 		vi.stubGlobal('cancelAnimationFrame', cancel);
 		const d = browserDeps();
+		expect(d.available()).toBe(true);
 		const cfg = { description: new Uint8Array(1), optimizeForLatency: true };
 		expect(await d.isSupported({ ...cfg, codec: 'ok' })).toBe(true);
 		expect(await d.isSupported({ ...cfg, codec: 'no' })).toBe(false);

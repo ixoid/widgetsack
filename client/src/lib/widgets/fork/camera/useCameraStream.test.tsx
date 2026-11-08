@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CameraDecoder, DecoderDeps, DecoderLike, FrameLike } from './camera-decoder';
 import { createCameraDecoder } from './camera-decoder';
 import type { SessionDeps } from './camera-session';
+import { REFUSED_ERROR } from './camera-model';
 import type { CameraStatus } from './camera-types';
 import { useCameraStream } from './useCameraStream';
 
@@ -40,13 +41,15 @@ function rig() {
 	const drawImage = vi.fn();
 	const canvas = { width: 0, height: 0, getContext: () => ({ drawImage, clearRect: vi.fn() }) };
 	const dd: DecoderDeps = {
+		available: () => true,
 		isSupported: async () => true,
 		create: (init) => {
 			output = init.output;
 			const d: DecoderLike = {
 				configure: () => undefined,
 				decode: (c) => decoded.push(c),
-				close: closes
+				close: closes,
+				decodeQueueSize: 0
 			};
 			return d;
 		},
@@ -66,8 +69,9 @@ function rig() {
 		},
 		subscribe: vi.fn(async () => STATUS),
 		unsubscribe: vi.fn(async () => undefined),
-		createDecoder: (_c, onProblem): CameraDecoder => {
-			const d = createCameraDecoder(canvas, onProblem, dd);
+		ack: vi.fn(async () => undefined),
+		createDecoder: (_c, onProblem, onDraw): CameraDecoder => {
+			const d = createCameraDecoder(canvas, onProblem, dd, onDraw);
 			sessionDecoderCloses.push(vi.spyOn(d, 'close'));
 			return d;
 		},
@@ -86,13 +90,13 @@ function rig() {
 	};
 }
 
-function Probe({ deps }: { deps: SessionDeps }) {
+function Probe({ deps, id = 'k' }: { deps: SessionDeps; id?: string }) {
 	const ref = useRef<HTMLCanvasElement>(null);
-	const view = useCameraStream(ref, 'k', deps);
+	const view = useCameraStream(ref, id, deps);
 	return (
 		<>
 			<canvas ref={ref} />
-			<span data-testid="view">{view}</span>
+			<span data-testid={`view-${id}`}>{view}</span>
 		</>
 	);
 }
@@ -104,7 +108,7 @@ describe('useCameraStream', () => {
 		await act(async () => {
 			await Promise.resolve();
 		});
-		expect(getByTestId('view').textContent).toBe('connecting');
+		expect(getByTestId('view-k').textContent).toBe('connecting');
 		await act(async () => {
 			r.channels[0].onmessage(CONFIG);
 			await Promise.resolve();
@@ -115,7 +119,7 @@ describe('useCameraStream', () => {
 			r.channels[0].onmessage({ kind: 'status', state: 'live' });
 		});
 		expect(r.decoded).toHaveLength(1);
-		expect(getByTestId('view').textContent).toBe('live');
+		expect(getByTestId('view-k').textContent).toBe('live');
 		const frame = { close: vi.fn(), displayWidth: 640, displayHeight: 360 };
 		r.emit(frame);
 		r.paint();
@@ -154,6 +158,53 @@ describe('useCameraStream', () => {
 		expect(r.sessionDecoderCloses[1]).toHaveBeenCalledTimes(1);
 		// the surviving mount's VideoDecoder is closed on teardown
 		expect(r.closes).toHaveBeenCalledTimes(1);
+	});
+
+	it('shows the refusal text when the overlay is not granted', async () => {
+		const r = rig();
+		vi.mocked(r.deps.subscribe).mockRejectedValueOnce(new Error(REFUSED_ERROR));
+		const { getByTestId } = render(<Probe deps={r.deps} />);
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		expect(getByTestId('view-k').textContent).toBe('refused');
+	});
+
+	it('acks through the injected command: a keyframe, then every 8th frame', async () => {
+		const r = rig();
+		render(<Probe deps={r.deps} />);
+		await act(async () => {
+			await Promise.resolve();
+		});
+		act(() => {
+			r.channels[0].onmessage(CONFIG);
+			r.channels[0].onmessage(KEY);
+		});
+		expect(r.deps.ack).toHaveBeenCalledWith('k', 0);
+		expect(r.deps.ack).toHaveBeenCalledTimes(1);
+	});
+
+	it('two widgets with different keys do not block each other', async () => {
+		const r = rig();
+		vi.mocked(r.deps.subscribe).mockImplementationOnce(() => new Promise(() => undefined));
+		const { getByTestId } = render(
+			<>
+				<Probe deps={r.deps} id="stuck" />
+				<Probe deps={r.deps} id="free" />
+			</>
+		);
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		expect(r.deps.subscribe).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(r.deps.subscribe).mock.calls.map((c) => c[1])).toEqual(['stuck', 'free']);
+		act(() => {
+			r.channels[1].onmessage({ kind: 'status', state: 'live' });
+		});
+		expect(getByTestId('view-free').textContent).toBe('live');
+		expect(getByTestId('view-stuck').textContent).toBe('connecting');
 	});
 
 	it('does nothing without a mounted canvas', () => {

@@ -1,5 +1,6 @@
 /* Camera widget — black stage, the decoded canvas, a centred state line and an optional caption.
-   Tokens only (--np-*). */
+   Tokens only (--np-*), except the stage itself: no theme token means black, and video needs it.
+   While waiting the stage is plain black (no dimmed last frame): the canvas is hidden, not filtered. */
 .cam {
 	position: relative;
 	width: 100%;
@@ -36,8 +37,8 @@
 	text-align: center;
 	font-size: var(--np-text-body, 14px);
 	line-height: var(--np-line-body, 20px);
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
+	text-wrap: balance;
+	overflow-wrap: anywhere;
 	color: var(--np-muted, rgba(255, 255, 255, 0.6));
 }
 .cam-caption {

@@ -10,6 +10,7 @@ const SNAP: StatsSnapshot = {
 	ttfkMs: 400,
 	kbps: 1500,
 	frames: 10,
+	superseded: 0,
 	dropped: 0
 };
 

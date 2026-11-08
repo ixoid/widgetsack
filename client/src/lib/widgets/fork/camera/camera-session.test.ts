@@ -9,6 +9,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CameraDecoder } from './camera-decoder';
+import { DECODE_ERROR_HOLD_MS, REFUSED_ERROR, WATCHDOG_MS } from './camera-model';
 import { getDiagnostics } from './camera-diagnostics';
 import {
 	defaultSessionDeps,
@@ -19,7 +20,7 @@ import {
 	type SessionDeps
 } from './camera-session';
 import type { CameraStatus } from './camera-types';
-import type { CameraView } from './camera-view';
+import type { CameraView, DecoderProblem } from './camera-model';
 
 // Golden vectors (framing-golden.hex), inlined: config + key + delta.
 const hex = (h: string) => Uint8Array.from(h.match(/../g) ?? [], (x) => parseInt(x, 16)).buffer;
@@ -36,7 +37,7 @@ const STATUS: CameraStatus = {
 	path: '',
 	hasUsername: false,
 	hasPassword: false,
-	credentialsSet: false,
+	credentialsSet: true,
 	codec: null,
 	width: null,
 	height: null,
@@ -51,9 +52,11 @@ function fakes(subscribeState: CameraStatus['state'] = 'connecting') {
 		configure: vi.fn(async () => undefined),
 		push: vi.fn(),
 		close: vi.fn(),
-		counters: () => ({ drawn: 0, dropped: 2 })
+		counters: () => ({ drawn: 0, superseded: 1, dropped: 2 })
 	};
-	let problem: (p: 'unsupportedCodec' | 'decodeError') => void = () => undefined;
+	let problem: (p: DecoderProblem) => void = () => undefined;
+	let draw: () => void = () => undefined;
+	const acks: [string, number][] = [];
 	const deps: SessionDeps = {
 		createChannel: () => {
 			const c = { onmessage: (_m: unknown) => undefined };
@@ -67,8 +70,12 @@ function fakes(subscribeState: CameraStatus['state'] = 'connecting') {
 		unsubscribe: vi.fn(async (key) => {
 			order.push(`unsub:${key}`);
 		}),
-		createDecoder: (_canvas, onProblem) => {
+		ack: vi.fn(async (key, seq) => {
+			acks.push([key, seq]);
+		}),
+		createDecoder: (_canvas, onProblem, onDraw) => {
 			problem = onProblem;
+			draw = onDraw;
 			return decoder;
 		},
 		now: () => Date.now()
@@ -81,7 +88,9 @@ function fakes(subscribeState: CameraStatus['state'] = 'connecting') {
 		decoder,
 		views,
 		onView: (v: CameraView) => views.push(v),
-		problem: (p: 'decodeError') => problem(p)
+		acks,
+		draw: () => draw(),
+		problem: (p: DecoderProblem) => problem(p)
 	};
 }
 const canvas = { width: 0, height: 0, getContext: () => null };
@@ -100,7 +109,7 @@ describe('camera session', () => {
 		const stop = startCameraSession('cam-1', canvas, f.onView, f.deps);
 		await flush();
 		expect(f.order).toEqual(['sub:cam-1']);
-		expect(f.views).toEqual(['connecting']); // from the subscribe result
+		expect(f.views).toEqual([]); // connecting is where the hook starts: nothing to announce
 
 		const ch = f.channels[0];
 		ch.onmessage({ kind: 'status', state: 'live', codec: 'avc1.4d002a' });
@@ -122,6 +131,7 @@ describe('camera session', () => {
 			width: 1920,
 			height: 1080,
 			frames: 2,
+			superseded: 1,
 			dropped: 2
 		});
 
@@ -165,8 +175,12 @@ describe('camera session', () => {
 		f.problem('decodeError');
 		f.channels[0].onmessage({ kind: 'status', state: 'live' });
 		expect(f.views.at(-1)).toBe('decodeError');
-		f.channels[0].onmessage(CONFIG); // a new CONFIG gives the decoder a fresh chance
-		f.channels[0].onmessage({ kind: 'status', state: 'live' });
+		f.channels[0].onmessage(CONFIG); // a new CONFIG alone does not clear a decodeError
+		expect(f.views.at(-1)).toBe('decodeError');
+		f.draw(); // a draw inside the burst window does not either
+		expect(f.views.at(-1)).toBe('decodeError');
+		vi.advanceTimersByTime(DECODE_ERROR_HOLD_MS);
+		f.draw(); // a draw after the window proves the rebuilt decoder works
 		expect(f.views.at(-1)).toBe('live');
 		stop();
 	});
@@ -198,27 +212,40 @@ describe('camera session', () => {
 		expect(f.order).toEqual(['sub:k', 'unsub:k']);
 	});
 
-	it('clears the canvas on every non-live view and not on live', async () => {
+	it('clears the canvas when entering a non-live view and not on live', async () => {
 		const f = fakes();
 		clearRect.mockClear();
 		const stop = startCameraSession('k', drawnCanvas, f.onView, f.deps);
 		await flush();
-		expect(clearRect).toHaveBeenCalledTimes(1); // connecting
+		expect(clearRect).not.toHaveBeenCalled(); // still connecting, nothing changed
 		f.channels[0].onmessage({ kind: 'status', state: 'live' });
-		expect(clearRect).toHaveBeenCalledTimes(1);
+		expect(clearRect).not.toHaveBeenCalled();
 		f.channels[0].onmessage({ kind: 'status', state: 'retrying', retryInMs: 1000 });
 		expect(f.views.at(-1)).toBe('noSignal');
-		expect(clearRect).toHaveBeenCalledTimes(2);
+		expect(clearRect).toHaveBeenCalledTimes(1);
 		expect(clearRect).toHaveBeenLastCalledWith(0, 0, 4, 3);
+		f.channels[0].onmessage({ kind: 'status', state: 'connecting' });
+		expect(clearRect).toHaveBeenCalledTimes(2);
 		stop();
 	});
 
-	it('shows "unavailable" when the subscribe is refused', async () => {
+	it('maps the fixed refusal string to refused (Error and plain string)', async () => {
+		for (const rejection of [new Error(REFUSED_ERROR), REFUSED_ERROR]) {
+			const f = fakes();
+			vi.mocked(f.deps.subscribe).mockRejectedValueOnce(rejection);
+			const stop = startCameraSession('k', canvas, f.onView, f.deps);
+			await flush();
+			expect(f.views).toEqual(['refused']);
+			stop();
+		}
+	});
+
+	it('shows no signal for any other subscribe failure', async () => {
 		const f = fakes();
-		vi.mocked(f.deps.subscribe).mockRejectedValueOnce(new Error('studio only'));
+		vi.mocked(f.deps.subscribe).mockRejectedValueOnce('camera stream key must be 1-64 letters');
 		const stop = startCameraSession('k', canvas, f.onView, f.deps);
 		await flush();
-		expect(f.views).toEqual(['unavailable']);
+		expect(f.views).toEqual(['noSignal']);
 		stop();
 	});
 
@@ -245,11 +272,164 @@ describe('camera session', () => {
 	it('has working default deps', async () => {
 		expect(typeof defaultSessionDeps.now()).toBe('number');
 		expect(defaultSessionDeps.createChannel()).toBeTruthy();
-		const dec = defaultSessionDeps.createDecoder(canvas, () => undefined);
-		expect(dec.counters()).toEqual({ drawn: 0, dropped: 0 });
+		const dec = defaultSessionDeps.createDecoder(
+			canvas,
+			() => undefined,
+			() => undefined
+		);
+		expect(dec.counters()).toEqual({ drawn: 0, superseded: 0, dropped: 0 });
 		dec.close();
 		await defaultSessionDeps.subscribe({} as Channel<unknown>, 'k');
 		await defaultSessionDeps.unsubscribe('k');
+		await defaultSessionDeps.ack('k', 1);
+	});
+});
+
+// A FRAME message as the backend frames it: header (kind, flags, reserved, seq), ts_us, payload.
+const frameBuf = (seq: number, keyframe: boolean) => {
+	const b = new ArrayBuffer(17);
+	const v = new DataView(b);
+	v.setUint8(0, 2);
+	v.setUint8(1, keyframe ? 1 : 0);
+	v.setUint32(4, seq, true);
+	v.setUint8(16, 9);
+	return b;
+};
+
+describe('acks', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it('acks the last seq every 8 frames and on every keyframe', async () => {
+		const f = fakes();
+		const stop = startCameraSession('cam-a', canvas, f.onView, f.deps);
+		await flush();
+		const ch = f.channels[0];
+		ch.onmessage(CONFIG);
+		ch.onmessage(frameBuf(0, true));
+		expect(f.acks).toEqual([['cam-a', 0]]); // keyframe
+		for (let seq = 1; seq <= 7; seq++) ch.onmessage(frameBuf(seq, false));
+		expect(f.acks).toHaveLength(1);
+		ch.onmessage(frameBuf(8, false));
+		expect(f.acks.at(-1)).toEqual(['cam-a', 8]); // 8 frames after the keyframe
+		ch.onmessage(frameBuf(9, true)); // mid-GOP keyframe
+		expect(f.acks.at(-1)).toEqual(['cam-a', 9]);
+		ch.onmessage(CONFIG); // a reconnect restarts seq near 0: acks follow the new numbers
+		ch.onmessage(frameBuf(0, true));
+		expect(f.acks.at(-1)).toEqual(['cam-a', 0]);
+		stop();
+	});
+
+	it('ignores ack failures and sends no ack after stop', async () => {
+		const f = fakes();
+		vi.mocked(f.deps.ack).mockRejectedValue(new Error('gone'));
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		f.channels[0].onmessage(frameBuf(0, true));
+		await flush(); // the rejection is swallowed: no unhandled rejection fails the run
+		expect(f.deps.ack).toHaveBeenCalledTimes(1);
+		stop();
+		f.channels[0].onmessage(frameBuf(1, true));
+		expect(f.deps.ack).toHaveBeenCalledTimes(1);
+	});
+
+	it('still acks frames the decoder gated away (the backend counts frames in flight)', async () => {
+		const f = fakes();
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		for (let seq = 1; seq <= 8; seq++) f.channels[0].onmessage(frameBuf(seq, false));
+		expect(f.acks).toEqual([['k', 8]]);
+		stop();
+	});
+});
+
+describe('watchdogs through the session', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it('connecting without a keyframe for more than 10 s becomes no signal', async () => {
+		const f = fakes();
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		vi.advanceTimersByTime(WATCHDOG_MS);
+		expect(f.views).toEqual([]);
+		vi.advanceTimersByTime(STATS_INTERVAL_MS);
+		expect(f.views).toEqual(['noSignal']);
+		f.channels[0].onmessage(CONFIG);
+		f.channels[0].onmessage(frameBuf(0, true));
+		expect(f.views.at(-1)).toBe('connecting'); // the keyframe clears the stall; live follows
+		f.channels[0].onmessage({ kind: 'status', state: 'live' });
+		expect(f.views.at(-1)).toBe('live');
+		stop();
+	});
+
+	it('live with no frame for more than 10 s becomes no signal', async () => {
+		const f = fakes();
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		f.channels[0].onmessage({ kind: 'status', state: 'live' });
+		vi.advanceTimersByTime(WATCHDOG_MS + STATS_INTERVAL_MS);
+		expect(f.views).toEqual(['live', 'noSignal']);
+		stop();
+	});
+});
+
+describe('subscribe result hints', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it('an address without credentials turns authFailed into credentialsMissing', async () => {
+		const f = fakes();
+		vi.mocked(f.deps.subscribe).mockResolvedValueOnce({
+			...STATUS,
+			configured: true,
+			credentialsSet: false,
+			state: 'connecting'
+		});
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		f.channels[0].onmessage({ kind: 'status', state: 'authFailed', error: 'authFailed' });
+		expect(f.views).toEqual(['credentialsMissing']);
+		stop();
+	});
+
+	it('decoderUnavailable stops the backend stream and goes deaf', async () => {
+		const f = fakes();
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		f.problem('decoderUnavailable');
+		expect(f.views).toEqual(['decoderUnavailable']);
+		await flush();
+		expect(f.order).toEqual(['sub:k', 'unsub:k']);
+		f.channels[0].onmessage(KEY);
+		expect(f.decoder.push).not.toHaveBeenCalled();
+		stop();
+	});
+});
+
+describe('per-key serialisation', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it('a subscribe that never resolves for one key does not block another key', async () => {
+		const f = fakes();
+		vi.mocked(f.deps.subscribe).mockImplementationOnce(() => new Promise(() => undefined));
+		const stopA = startCameraSession('a', canvas, f.onView, f.deps);
+		const stopB = startCameraSession('b', canvas, f.onView, f.deps);
+		await flush();
+		expect(f.order).toEqual(['sub:b']);
+		stopB();
+		await flush();
+		expect(f.order).toEqual(['sub:b', 'unsub:b']);
+		stopA();
+	});
+
+	it('keeps order within one key across several queued sessions', async () => {
+		const f = fakes();
+		const stops = [1, 2, 3].map(() => startCameraSession('k', canvas, f.onView, f.deps));
+		stops.forEach((s) => s());
+		await flush();
+		expect(f.order).toEqual(['unsub:k', 'unsub:k', 'unsub:k']); // each cancelled before subscribing
 	});
 });
 
@@ -266,7 +446,8 @@ describe('runCameraStream visibility', () => {
 
 	it('unsubscribes after 1.5 s hidden, resubscribes on visible, keeps a short hide', async () => {
 		const f = fakes();
-		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		clearRect.mockClear();
+		const stop = runCameraStream('k', drawnCanvas, f.onView, f.deps);
 		await flush();
 		expect(f.order).toEqual(['sub:k']);
 
@@ -287,6 +468,7 @@ describe('runCameraStream visibility', () => {
 		await flush();
 		expect(f.order).toEqual(['sub:k', 'unsub:k', 'sub:k']);
 		expect(f.views).toContain('connecting');
+		expect(clearRect).toHaveBeenCalled(); // the paused session's frame is wiped before the new one
 
 		stop();
 		await flush();

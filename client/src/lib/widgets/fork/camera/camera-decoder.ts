@@ -3,7 +3,10 @@
 // inject fakes. Policy: ignore deltas until a keyframe after each configure, keep only the newest
 // decoded frame and draw it on the next animation frame, close every VideoFrame exactly once.
 
+import type { DecoderProblem } from './camera-model';
 import type { ConfigMsg, FrameMsg } from './camera-protocol';
+
+export type { DecoderProblem };
 
 export type FrameLike = { close(): void; displayWidth?: number; displayHeight?: number };
 
@@ -17,9 +20,13 @@ export type DecoderLike = {
 	configure(config: DecoderConfig): void;
 	decode(chunk: unknown): void;
 	close(): void;
+	/** Chunks handed to the browser and not yet decoded: the backlog signal. */
+	readonly decodeQueueSize: number;
 };
 
 export type DecoderDeps = {
+	/** False when the browser has no VideoDecoder at all (no point in subscribing). */
+	available(): boolean;
 	isSupported(config: DecoderConfig): Promise<boolean>;
 	create(init: { output(frame: FrameLike): void; error(e: unknown): void }): DecoderLike;
 	chunk(init: { type: 'key' | 'delta'; timestamp: number; data: Uint8Array }): unknown;
@@ -37,8 +44,8 @@ export type CanvasLike = {
 	} | null;
 };
 
-export type DecoderProblem = 'unsupportedCodec' | 'decodeError';
-
+/** More queued chunks than this: drop deltas until the next keyframe rather than fall behind. */
+export const QUEUE_LIMIT = 8;
 export const ERROR_BURST = 3;
 export const ERROR_WINDOW_MS = 10_000;
 
@@ -57,6 +64,7 @@ export function clearCanvas(canvas: CanvasLike): void {
 }
 
 export const browserDeps = (): DecoderDeps => ({
+	available: () => typeof VideoDecoder !== 'undefined',
 	isSupported: async (config) => {
 		const r = await VideoDecoder.isConfigSupported(config);
 		return r.supported === true;
@@ -72,14 +80,19 @@ export type CameraDecoder = {
 	configure(msg: ConfigMsg): Promise<void>;
 	push(msg: FrameMsg): void;
 	close(): void;
-	/** Frames drawn, and frames discarded (gated deltas, superseded outputs, failed decodes). */
-	counters(): { drawn: number; dropped: number };
+	/**
+	 * `drawn` reached the canvas. `superseded` was decoded but replaced by a newer frame before
+	 * the animation-frame draw: display supersession, not loss. `dropped` never made it to the
+	 * screen for lack of a decode: errors, deltas before the keyframe gate, queue backlog.
+	 */
+	counters(): { drawn: number; superseded: number; dropped: number };
 };
 
 export function createCameraDecoder(
 	canvas: CanvasLike,
 	onProblem: (p: DecoderProblem) => void,
-	deps: DecoderDeps = browserDeps()
+	deps: DecoderDeps = browserDeps(),
+	onDraw: () => void = () => undefined
 ): CameraDecoder {
 	const burst = createErrorBurst();
 	let decoder: DecoderLike | null = null;
@@ -90,6 +103,7 @@ export function createCameraDecoder(
 	let pending: FrameLike | null = null;
 	let raf = 0;
 	let drawn = 0;
+	let superseded = 0;
 	let dropped = 0;
 
 	// close() throws on a decoder the browser already closed after an error.
@@ -114,6 +128,7 @@ export function createCameraDecoder(
 		try {
 			canvas.getContext('2d')?.drawImage(frame as never, 0, 0);
 			drawn++;
+			onDraw();
 		} finally {
 			frame.close();
 		}
@@ -123,7 +138,7 @@ export function createCameraDecoder(
 		if (closed) return frame.close();
 		if (pending) {
 			pending.close();
-			dropped++;
+			superseded++;
 		}
 		pending = frame;
 		if (!raf) raf = deps.schedule(draw);
@@ -153,6 +168,7 @@ export function createCameraDecoder(
 		async configure(msg) {
 			const mine = ++generation;
 			discard();
+			if (!deps.available()) return onProblem('decoderUnavailable');
 			config = {
 				codec: msg.codec,
 				description: msg.description,
@@ -170,6 +186,12 @@ export function createCameraDecoder(
 			}
 			if (needKey && !msg.keyframe) {
 				dropped++;
+				return;
+			}
+			if (!msg.keyframe && decoder.decodeQueueSize > QUEUE_LIMIT) {
+				// behind: a delta now would only add latency, wait for the next keyframe
+				dropped++;
+				needKey = true;
 				return;
 			}
 			needKey = false;
@@ -194,6 +216,6 @@ export function createCameraDecoder(
 			pending = null;
 			discard();
 		},
-		counters: () => ({ drawn, dropped })
+		counters: () => ({ drawn, superseded, dropped })
 	};
 }

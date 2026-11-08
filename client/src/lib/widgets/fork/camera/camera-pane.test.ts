@@ -120,9 +120,10 @@ describe('diagnosticRows', () => {
 			ttfkMs: null,
 			kbps: null,
 			frames: 0,
+			superseded: 0,
 			dropped: 0
 		});
-		expect(empty.map(([, v]) => v)).toEqual(['—', '—', '—', '—', '—', '0', '0']);
+		expect(empty.map(([, v]) => v)).toEqual(['—', '—', '—', '—', '—', '0', '0', '0']);
 		const full = diagnosticRows({
 			codec: 'avc1.4d002a',
 			width: 1920,
@@ -131,6 +132,7 @@ describe('diagnosticRows', () => {
 			ttfkMs: 412.6,
 			kbps: 1499.6,
 			frames: 120,
+			superseded: 9,
 			dropped: 3
 		});
 		expect(Object.fromEntries(full)).toEqual({
@@ -140,6 +142,7 @@ describe('diagnosticRows', () => {
 			'First keyframe': '413 ms',
 			Bitrate: '1500 kbit/s',
 			Frames: '120',
+			Superseded: '9',
 			Dropped: '3'
 		});
 	});

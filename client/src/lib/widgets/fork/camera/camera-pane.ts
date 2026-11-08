@@ -82,6 +82,7 @@ export function diagnosticRows(s: StatsSnapshot): [string, string][] {
 		['First keyframe', s.ttfkMs === null ? dash : `${Math.round(s.ttfkMs)} ms`],
 		['Bitrate', s.kbps === null ? dash : `${Math.round(s.kbps)} kbit/s`],
 		['Frames', String(s.frames)],
+		['Superseded', String(s.superseded)],
 		['Dropped', String(s.dropped)]
 	];
 }

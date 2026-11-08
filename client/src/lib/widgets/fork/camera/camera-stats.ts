@@ -11,6 +11,9 @@ export type StatsSnapshot = {
 	ttfkMs: number | null;
 	kbps: number | null;
 	frames: number;
+	/** Decoded but replaced by a newer frame before the draw: display supersession, not loss. */
+	superseded: number;
+	/** Never decoded to the screen: decode errors, keyframe-gate and backlog discards. */
 	dropped: number;
 };
 
@@ -41,7 +44,7 @@ export function createCameraStats(startMs: number, windowMs = 5000) {
 			ttfkMs ??= f.nowMs - startMs;
 			keyTs = [...keyTs, f.tsUs].slice(-KEY_HISTORY);
 		},
-		snapshot(nowMs: number, dropped: number): StatsSnapshot {
+		snapshot(nowMs: number, counts: { superseded: number; dropped: number }): StatsSnapshot {
 			samples = samples.filter((s) => nowMs - s.at <= windowMs);
 			let kbps: number | null = null;
 			if (samples.length > 0) {
@@ -51,7 +54,17 @@ export function createCameraStats(startMs: number, windowMs = 5000) {
 			}
 			const gopSeconds =
 				keyTs.length >= 2 ? (keyTs[keyTs.length - 1] - keyTs[0]) / (keyTs.length - 1) / 1e6 : null;
-			return { codec, width, height, gopSeconds, ttfkMs, kbps, frames, dropped };
+			return {
+				codec,
+				width,
+				height,
+				gopSeconds,
+				ttfkMs,
+				kbps,
+				frames,
+				superseded: counts.superseded,
+				dropped: counts.dropped
+			};
 		}
 	};
 }

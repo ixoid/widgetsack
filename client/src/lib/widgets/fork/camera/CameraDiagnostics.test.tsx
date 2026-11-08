@@ -18,11 +18,14 @@ describe('CameraDiagnostics', () => {
 				ttfkMs: 400,
 				kbps: 1500,
 				frames: 10,
+				superseded: 5,
 				dropped: 1
 			})
 		);
 		expect(screen.getByText('1920×1080')).toBeTruthy();
 		expect(screen.getByText('1500 kbit/s')).toBeTruthy();
 		expect(screen.getByText('GOP')).toBeTruthy();
+		expect(screen.getByText('Superseded')).toBeTruthy();
+		expect(screen.getByText('Dropped')).toBeTruthy();
 	});
 });

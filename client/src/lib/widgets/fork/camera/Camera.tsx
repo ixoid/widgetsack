@@ -3,7 +3,7 @@
 // frame: Camera.css hides the canvas unless data-view is 'live', and the session clears it when
 // leaving live. The stream key is derived from the widget instance; one camera config serves them all.
 import { useId, useRef } from 'react';
-import { VIEW_TEXT } from './camera-view';
+import { stateText } from './camera-model';
 import { useCameraStream } from './useCameraStream';
 import './Camera.css';
 
@@ -20,7 +20,7 @@ export default function Camera({ fit = 'contain', caption = '', showState = true
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const key = keyOf(useId());
 	const view = useCameraStream(canvasRef, key);
-	const text = VIEW_TEXT[view];
+	const text = stateText(view);
 	return (
 		<div className="cam" data-view={view}>
 			<canvas ref={canvasRef} className={`cam-canvas cam-fit-${fit}`} />
