@@ -92,8 +92,9 @@ owner's real Action Center into process memory — that is why it needs the owne
    Settings flips `GetAccessStatus` off Allowed (proves the discriminator works on 26200).
 
 Fail any → B is taken automatically (its own ADR records the schema pin + rusqlite). The probe may
-log: status kinds, item counts, and the app names of OUR synthetic toasts — never bodies or
-titles, and never the contents of the owner's real notifications.
+log: status kinds, item counts, and app display names (first 10 — these may include the owner's
+real apps; names are the permitted tier per the CTO privacy contract) — never bodies or titles,
+and never the contents of the owner's real notifications.
 
 ## Consequences
 

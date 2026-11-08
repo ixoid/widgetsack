@@ -26,6 +26,9 @@ None. Configuration lives in the app config dir; integration secrets go through 
   before any widget/layout change: `.\scripts\snapshot-layout.ps1` → `examples/layouts/own-desktop.widgets.json`.
 - Plugin configs (`plugins/*.json`) are versioned by their own `version` field inside the encrypted blob; a
   provider switch (weather met.no, stocks cbr-binance) is a settings change, not a migration.
+- Notifyfeed (N-1): no installer impact (three additive `windows` crate feature lines; no CSP, capabilities
+  or bundle change); `plugins/notify.json` is plain JSON (no secrets, no `secure_config`), fully defaulted,
+  created on first save, per-instance (release root vs `multi\`) — nothing to migrate on upgrade.
 
 ## Release steps
 1. `main` only, clean tree, all gates green (the release script re-runs them unless `-SkipGates`).
@@ -39,5 +42,9 @@ None. Configuration lives in the app config dir; integration secrets go through 
 - Overlay comes up on the second monitor with the saved layout; Studio opens from the tray.
 - `%LOCALAPPDATA%\io.github.gyng\logs\widgetsack.log` has `window geometry … frame_width=2560`.
 - Plugins → Camera: **Test connection** returns the codec; the Camera widget goes live (without a full-tunnel VPN).
+- Notifications: Windows may prompt for notification access on first widget demand — grant it (re-allow via
+  Settings → Privacy & security → Notifications if denied); a toast fired afterwards shows in the feed.
+  Granted + empty can also mean a Windows update broke the unpackaged listener (ADR `notifyfeed-source`,
+  recovery probe `cargo test probe_live_listener -- --ignored --nocapture`).
 - Servers, tickers, weather, agenda cards show data within a minute.
 - Autostart: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\widgetsack` exists after enabling the toggle.
