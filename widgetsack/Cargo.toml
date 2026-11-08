@@ -25,6 +25,11 @@ getrandom = "0.4"
 # only to build the self-signed-cert connector; reqwest/tungstenite use it via their features.
 native-tls = "0.2"
 notify = "8"
+# Native RTSP client for the camera widget (ADR-005). Exact pin: single-maintainer 0.4.x crate, bump
+# deliberately. Default features kept so an H.265 SDP still DESCRIBEs cleanly.
+retina = "=0.4.21"
+# Parses the bare (credential-free) stream address handed to retina; already in the tree transitively.
+url = "2"
 nvml-wrapper = "0.13"
 # HA control + entity catalog over REST. native-tls enables https; self-signed certs are an
 # explicit per-config opt-in (HaConfig.insecure → danger_accept_invalid_certs).
