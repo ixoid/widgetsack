@@ -30,6 +30,17 @@ or it is blind.
 
 ## MEDIUM
 
+### [owner] Notification feed widget — toasts missed during games
+- **Severity:** MEDIUM
+- **File:** docs/PRODUCT_ROADMAP.md (N-1)
+- **Found by:** owner (2026-11-08, mid-session request)
+- **Feature:** notifications feed (new vector N)
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** «хочу виджет с уведомлениями. часто прилетают пока в игре — а посмотреть потом негде. лента их нужна какая-то» — a scrollable feed of recent Windows toasts on the overlay. Filed as roadmap item N-1 with a research step (WinRT UserNotificationListener vs read-only wpndatabase.db).
+- **Fix:** run `/feature` on N-1 after C-1 (or `/sprint` picks it up).
+- **Check:** `grep -c "### [N-1]" docs/PRODUCT_ROADMAP.md` → 1 now; closes when N-1 is marked done in the roadmap.
+
 ## LOW / Cosmetic
 
 ### [qa] Yahoo symbol help lost code formatting

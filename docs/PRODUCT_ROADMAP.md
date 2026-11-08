@@ -74,6 +74,15 @@
 ```
 **Priority:** Phase 3 · **Depends on:** S-1, C-1, K-1 · **Est. size/mode:** S · INFRA
 
+## Vector N — Notifications feed (owner request 2026-11-08)
+
+### [N-1]: Notification feed widget — what arrived while you were away
+```
+/feature A fork widget `notifyfeed` that shows a scrollable feed of recent Windows toast notifications (app name/icon, title, body, time, grouped by app, newest first, configurable depth e.g. last 50 / last 24 h, "mark all seen" via a Studio toggle or a timer) so notifications that arrived during a full-screen game can be read later on the overlay. Research step first (the source is an open choice): (a) WinRT `Windows.UI.Notifications.Management.UserNotificationListener` — the official listener, needs the user to grant "notification access" in Settings → Privacy and normally package identity (sparse package / MSIX identity for the unpackaged Tauri exe — check feasibility and the NSIS installer impact); (b) read-only polling of the Action Center store `%LOCALAPPDATA%MicrosoftWindowsNotificationswpndatabase.db` (SQLite; what Action Center itself shows, works unpackaged, needs a SQLite crate and a schema that Microsoft may change); (c) anything better found. Rust fork source `widgetsack/src/fork/notifyfeed.rs` with a demand gate, emits `notify.list` (JSON text sample, like `agenda.list`) + `notify.count`; pure mappers with fixture tests; privacy: notification bodies never leave the machine and are not persisted by us beyond the in-memory ring (owner toggle for per-app exclusion, e.g. banking/messengers). Done when a toast fired during a game shows up in the widget with app, title, body and time, and the list survives the game session.
+```
+**Priority:** Phase 2 (owner: «часто прилетают пока в игре — а посмотреть потом негде») · **Depends on:** none · **Est. size/mode:** M–L · DATA — new local data source (WinRT listener or SQLite read), privacy-sensitive content, possibly package identity
+**Owner facts:** Windows 11; the overlay is a click-through dev build; notifications of interest arrive while a full-screen game is in the foreground.
+
 ---
 
 ## Recommended execution order
@@ -83,3 +92,4 @@
 3a. T-1 — done, in `main` (2026-11-08).
 4. C-1 — after S-1; needs the owner at the keyboard (CSP decision, real camera, go2rtc).
 5. W-3, then P-1.
+6. N-1 — notification feed (owner request 2026-11-08), after C-1.
