@@ -43,6 +43,17 @@ or it is blind.
 
 ## LOW / Cosmetic
 
+### [owner] CPU and GPU cards: same gauge order (temperature and clock swap places)
+- **Severity:** LOW
+- **File:** `examples/layouts/own-desktop.widgets.json` (CPU card gauges on `hw.cpu.clock.max` / `hw.cpu.temp`; GPU card gauges) — live layout `%APPDATA%io.github.gyngwidgets.json`
+- **Found by:** owner (2026-11-08)
+- **Feature:** owner desktop layout
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** «упорядочить иконки в цпу и гпу одинаково. сейчас там температура и герцовка в разных частях — визуально сложно быстро показания понять». Overlay 2026-11-08: GPU card reads Load → Temp → Clock, CPU card reads Load → MHz → Temp. Same metric should sit in the same position on both cards.
+- **Fix:** layout-only change (no code): after `scripts/snapshot-layout.ps1`, reorder the CPU card gauges to Load → Temp → Clock (GPU order; temperature next to load as the "health" pair) or the GPU card to match the CPU — owner picks in Studio or the coordinator edits the example + the owner confirms copying it over the live file (needs an explicit «да»). Commit `chore(layout): …`.
+- **Check:** overlay screenshot (`CopyFromScreen(1406, 2160, …, 2560×720)`) shows Temp and Clock gauges in the same column position on both cards; `git diff` of the example layout touches only the gauge order inside the two cards.
+
 ### [qa] Yahoo symbol help lost code formatting
 - **Severity:** LOW
 - **File:** `client/src/lib/widgets/plugins/stocks-provider.ts` (`stocksSymbolHelp`)
