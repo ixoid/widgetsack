@@ -18,6 +18,13 @@ import {
 } from './stocks-commands';
 import { refreshStocksCatalog, stocksSource } from './stocks-source';
 import { parseSymbols } from './stocks-symbols';
+import {
+	normalizeStocksProvider,
+	STOCKS_PROVIDER_OPTIONS,
+	stocksProviderNote,
+	stocksSymbolHelp
+} from './stocks-provider';
+import type { StocksProvider } from './stocks-types';
 import TokenListField from './TokenListField';
 
 export default function StocksSettings() {
@@ -25,6 +32,7 @@ export default function StocksSettings() {
 	const status = useSensor(hub, 'stocks.status');
 	const badge = haStatusBadge(status.value?.kind === 'text' ? status.value.value : null);
 
+	const [provider, setProvider] = useState<StocksProvider>('yahoo');
 	const [symbols, setSymbols] = useState<string[]>([]);
 	const [pollSeconds, setPollSeconds] = useState(60);
 	const [configured, setConfigured] = useState(false);
@@ -37,6 +45,7 @@ export default function StocksSettings() {
 		stocksConfigStatus()
 			.then((s) => {
 				if (!alive || !current()) return;
+				setProvider(normalizeStocksProvider(s.provider));
 				setSymbols(s.symbols);
 				setPollSeconds(s.pollSeconds);
 				setConfigured(s.configured);
@@ -55,7 +64,7 @@ export default function StocksSettings() {
 		if (!canSubmit) return;
 		await save(
 			async () => {
-				await saveStocksConfig({ provider: 'yahoo', symbols, pollSeconds });
+				await saveStocksConfig({ provider, symbols, pollSeconds });
 				await stocksReconnect();
 				await refreshStocksCatalog();
 			},
@@ -74,12 +83,29 @@ export default function StocksSettings() {
 				<span className="has-state-dim">{configured ? 'configured' : 'not configured'}</span>
 			</div>
 
+			<div className="rp-hd">Provider</div>
+			<label className="has-field">
+				Stocks provider
+				<select
+					value={provider}
+					aria-describedby="stocks-provider-hint"
+					onChange={(e) => {
+						setProvider(normalizeStocksProvider(e.currentTarget.value));
+						dirtied();
+					}}
+				>
+					{STOCKS_PROVIDER_OPTIONS.map((o) => (
+						<option key={o.value} value={o.value}>
+							{o.label}
+						</option>
+					))}
+				</select>
+			</label>
+
 			<div className="rp-hd">Symbols</div>
-			<div className="has-help">
-				Quotes come from Yahoo Finance. No API key is needed. Add symbols such as <code>AAPL</code>,{' '}
-				<code>BTC-USD</code>, or <code>^GSPC</code>. Add a <strong>Stock Ticker</strong> widget and
-				select its symbol. You can also bind <code>stocks.&lt;SYMBOL&gt;.*</code> sensors to other
-				widgets.
+			<div className="has-help" id="stocks-provider-hint">
+				{stocksSymbolHelp(provider)} Add a <strong>Stock Ticker</strong> widget and select its
+				symbol. You can also bind <code>stocks.&lt;SYMBOL&gt;.*</code> sensors to other widgets.
 			</div>
 
 			<TokenListField
@@ -111,9 +137,7 @@ export default function StocksSettings() {
 			</label>
 
 			<div className="has-warn">
-				<Icon name="alert" /> Yahoo&rsquo;s endpoint is unofficial and best-effort — it can
-				rate-limit or change without notice. Polling is paused automatically while no ticker is
-				shown.
+				<Icon name="alert" /> {stocksProviderNote(provider)}
 			</div>
 
 			<div className="has-actions">

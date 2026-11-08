@@ -75,6 +75,79 @@ describe('StocksSettings', () => {
 		expect(stocksConnect).toHaveBeenCalled();
 	});
 
+	it('renders the provider select defaulting to Yahoo Finance', async () => {
+		const { findByText, getByLabelText, getByText } = renderPanel();
+		await findByText('AAPL price');
+		const select = getByLabelText('Stocks provider') as HTMLSelectElement;
+		expect(select.value).toBe('yahoo');
+		expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+			'Yahoo Finance',
+			'CBR + Binance'
+		]);
+		expect(getByText(/unofficial/)).toBeTruthy();
+	});
+
+	it('loads a saved cbr-binance provider and shows its hint', async () => {
+		vi.mocked(stocksConfigStatus).mockResolvedValue({
+			configured: true,
+			provider: 'cbr-binance',
+			symbols: ['USDRUB=X'],
+			pollSeconds: 60
+		});
+		const { getByLabelText, getByText, queryByText } = renderPanel();
+		const select = getByLabelText('Stocks provider') as HTMLSelectElement;
+		await waitFor(() => expect(select.value).toBe('cbr-binance'));
+		expect(getByText(/Supported symbols: USDRUB/)).toBeTruthy();
+		expect(getByText(/rolling 24h/)).toBeTruthy();
+		expect(queryByText(/unofficial/)).toBeNull();
+	});
+
+	it('treats a junk status provider as yahoo', async () => {
+		vi.mocked(stocksConfigStatus).mockResolvedValue({
+			configured: true,
+			provider: 'bybit',
+			symbols: ['AAPL'],
+			pollSeconds: 60
+		});
+		const { getByLabelText, findByLabelText } = renderPanel();
+		await findByLabelText('Remove AAPL');
+		expect((getByLabelText('Stocks provider') as HTMLSelectElement).value).toBe('yahoo');
+	});
+
+	it('swaps the hint text when the provider select changes, both ways', async () => {
+		const { getByLabelText, getByText, queryByText, findByText } = renderPanel();
+		await findByText('AAPL price');
+		const select = getByLabelText('Stocks provider');
+		expect(getByText(/unofficial/)).toBeTruthy();
+		expect(queryByText(/Supported symbols: USDRUB/)).toBeNull();
+		fireEvent.change(select, { target: { value: 'cbr-binance' } });
+		expect(getByText(/Supported symbols: USDRUB/)).toBeTruthy();
+		expect(getByText(/rolling 24h/)).toBeTruthy();
+		expect(queryByText(/unofficial/)).toBeNull();
+		fireEvent.change(select, { target: { value: 'yahoo' } });
+		expect(getByText(/unofficial/)).toBeTruthy();
+		expect(queryByText(/rolling 24h/)).toBeNull();
+	});
+
+	it('saves the chosen provider and dirties the form', async () => {
+		const { getByText, getByLabelText, findByText, queryByText } = renderPanel();
+		await findByText('AAPL price');
+		fireEvent.click(getByText('Save & refresh'));
+		expect(await findByText('Saved ✓')).toBeTruthy();
+		fireEvent.change(getByLabelText('Stocks provider'), { target: { value: 'cbr-binance' } });
+		// Editing the form clears the stale "Saved" tick.
+		expect(queryByText('Saved ✓')).toBeNull();
+		vi.mocked(saveStocksConfig).mockClear();
+		fireEvent.click(getByText('Save & refresh'));
+		await waitFor(() =>
+			expect(saveStocksConfig).toHaveBeenCalledWith({
+				provider: 'cbr-binance',
+				symbols: ['AAPL', 'BTC-USD'],
+				pollSeconds: 90
+			})
+		);
+	});
+
 	it('lists the bindable per-symbol sensor ids', async () => {
 		const { findByText, getByText } = renderPanel();
 		expect(await findByText('AAPL price')).toBeTruthy();

@@ -3,4 +3,5 @@
 
 pub mod hwinfo;
 pub mod server_check;
+pub mod stocks_cbr;
 pub mod weather_metno;
