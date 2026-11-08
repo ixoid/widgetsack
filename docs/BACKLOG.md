@@ -41,29 +41,7 @@ or it is blind.
 - **Fix:** run `/feature` on N-1 after C-1 (or `/sprint` picks it up).
 - **Check:** `grep -c "### [N-1]" docs/PRODUCT_ROADMAP.md` → 1 now; closes when N-1 is marked done in the roadmap.
 
-### [security] Camera: no cap on subscribers per window or in total
-- **Severity:** MEDIUM
-- **File:** `widgetsack/src/fork/camera/registry.rs:252` (`Hub::subscribe`), `widgetsack/src/fork/camera/commands.rs` (`camera_subscribe`)
-- **Found by:** security-qa-reviewer (pre-merge gate, run C-1-20261108-1134)
-- **Feature:** C-1 camera widget
-- **Date:** 2026-11-08
-- **Status:** open
-- **Description:** a gated overlay can subscribe any number of distinct keys (`[A-Za-z0-9_-]{1,64}`); every subscriber gets its own copy of every frame, and keyframes bypass the 24-frame window (`flow.rs:121`), so a non-acking subscriber holds up to 24 deltas + every keyframe for 15 s in Tauri's unbounded channel queue: about 1.5 MB per subscriber at the owner's ch2 bitrate, up to (24+8) x 4 MiB = 128 MiB per subscriber with a hostile camera at the AU cap. The real client opens one key per mounted widget, so this needs a buggy or compromised overlay.
-- **Fix:** in `Hub::subscribe` refuse a new `(label, key)` when the window already has 8 subscribers or the hub has 16 (a replace of an existing key is always allowed); fixed error string; the client maps it to `unavailable`. Registry test: 9th key of one window refused, a replace still works, another window still admitted.
-- **Check:** `cargo test fork::camera::registry::tests::subscribers_are_capped` → 1 passed (positive control in the same test: the 8th key is admitted).
-
 ## LOW / Cosmetic
-
-### [security] Camera: SDP codec name is passed to the webview unbounded
-- **Severity:** LOW
-- **File:** `widgetsack/src/fork/camera/worker.rs:189` (`codec_name`), shown by `client/src/lib/widgets/fork/camera/camera-model.ts:51` and `camera-pane.ts` `probeLine`
-- **Found by:** security-qa-reviewer (pre-merge gate, run C-1-20261108-1134)
-- **Feature:** C-1 camera widget
-- **Date:** 2026-11-08
-- **Status:** open
-- **Description:** `encoding_name()` comes from the camera's SDP (`a=rtpmap`), i.e. it is camera-controlled, and is upper-cased and sent as `codec` in the `unsupportedCodec` status and in `ProbeResult`. React escapes it and `.cam-state` wraps with `overflow-wrap: anywhere`, so it is not an injection, only a hostile camera can fill the widget with text of any length.
-- **Fix:** in `codec_name` keep at most 16 bytes of `[A-Z0-9._-]` (else `"?"`); unit test with a 1 KB name and with `<script>`.
-- **Check:** `cargo test fork::camera::worker::tests::codec_name_is_bounded` → 1 passed.
 
 ### [qa] Camera: decoder-side unsupportedCodec and subscribe `unavailable` never recover without a remount
 - **Severity:** LOW
@@ -75,28 +53,6 @@ or it is blind.
 - **Description:** when `isConfigSupported` is false the session unsubscribes and goes deaf; a `subscribeFailed` other than refused is terminal too. After the owner fixes the stream or the config in Studio, an always-visible overlay widget keeps the old text until it is hidden and shown or remounted (the Rust side restarts, but this widget is no longer subscribed).
 - **Fix:** let the session listen for a config-saved signal (e.g. re-run the session when `camera_config_status` changes, or a Tauri event emitted by `save_camera_config`), or fold into the live-stall restart from the pre-merge HIGH.
 - **Check:** Vitest: "a terminal unsupportedCodec session restarts after a config save" → passes; manual: H.265 stream → fix in Studio → overlay widget goes live without hide/show.
-
-### [security] Camera: the login field is a plain text input
-- **Severity:** LOW
-- **File:** `client/src/lib/widgets/fork/camera/CameraSettings.tsx:119` (`kind="text"`)
-- **Found by:** security-qa-reviewer (pre-merge gate, run C-1-20261108-1134)
-- **Feature:** C-1 camera widget
-- **Date:** 2026-11-08
-- **Status:** open
-- **Description:** the architecture asked for `type=password` on both login and password; the login is typed in clear while entering it (shoulder-surfing / screen-share only; it is dropped from React state after save, there is no `<form>`, so WebView2 autofill does not store it).
-- **Fix:** `kind="password"` for Login, or accept and update the architecture note.
-- **Check:** `grep -n 'label="Login"' -A2 client/src/lib/widgets/fork/camera/CameraSettings.tsx` → shows `kind="password"`.
-
-### [security] Camera: a finished worker is respawned on every subscribe without a throttle
-- **Severity:** LOW
-- **File:** `widgetsack/src/fork/camera/registry.rs:261`
-- **Found by:** security-qa-reviewer (pre-merge gate, run C-1-20261108-1134)
-- **Feature:** C-1 camera widget
-- **Date:** 2026-11-08
-- **Status:** open
-- **Description:** after a terminal `unsupportedCodec` (no lockout), each new subscribe spawns a fresh worker that DESCRIBEs at once with the stored login; a gated overlay looping subscribe/unsubscribe can DESCRIBE as fast as IPC allows. A live or retrying worker is bounded by the 2 s grace (a new worker also starts a fresh backoff ladder), 401/403 by the 60 s lockout. The real client never resubscribes after unsupportedCodec.
-- **Fix:** remember when the last worker started and delay a respawn to at least `BASE` (1 s) after it, or keep a terminal unsupportedCodec parked until a save like 404.
-- **Check:** registry fake-server test: 20 subscribe/unsubscribe cycles against an H.265 fake in 200 ms → `fake.accepts() <= 1`.
 
 ### [qa] Camera: occlusion is not detected, the decoder keeps running under a fullscreen app
 - **Severity:** LOW
