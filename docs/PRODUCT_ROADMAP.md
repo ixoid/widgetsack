@@ -77,14 +77,6 @@
 ```
 **Priority:** Phase 2 · **Depends on:** none · **Est. size/mode:** S · SPEC · **Status:** ✅ done 2026-11-07, merged into `main` (73a4247; lane 3; `agendaplus` is on the dev overlay)
 
-## Vector P — Packaging (brief stage 4)
-
-### [P-1]: Release packaging and autostart
-```
-/feature Stage 4: release installer verified on a clean Windows VM, autostart via the existing Launch at login toggle, config.example.json for the fork plugins, README-fork.md (what was added, setup, upstream merge procedure, known limits), export the owner's layout as a sack preset.
-```
-**Priority:** Phase 3 · **Depends on:** S-1, C-1, K-1 · **Est. size/mode:** S · INFRA
-
 ## Vector N — Notifications feed (owner request 2026-11-08)
 
 ### [N-1]: Notification feed widget — what arrived while you were away
@@ -102,5 +94,5 @@
 3. W-2, K-1 and the LOW backlog items — done, in `main`.
 3a. T-1 — done, in `main` (2026-11-08).
 4. C-1 — done, in `main` (2026-11-08; native RTSP, no go2rtc, no CSP change).
-5. W-3, then P-1.
+5. W-3 — the last open roadmap item. (Vector P / the clean-VM installer check was dropped by the owner 2026-11-08: «это вообще не нужно»; the packaging itself shipped with the stage-4 installer and release script.)
 6. N-1 — done 2026-11-08 on `feat/N-1-notifyfeed` (ADR-006, live probe GO, runtime-eval APPROVED; merge pending owner's word; real-game confirmation after the next release install).
