@@ -1,6 +1,6 @@
 # ADR-005: Camera widget — native in-process RTSP (retina → Tauri Channel → WebCodecs)
 
-- **Status:** Accepted (phase 1 spike pending; superseded by the fallback below on a spike no-go)
+- **Status:** Accepted (phase 1 spike GO 2026-11-08; the fallback below stays documented but unused)
 - **Date:** 2026-11-08
 - **Deciders:** owner (transport A, "native, with a spike; on failure go2rtc", 2026-11-08); CTO review
   (interface contract); architect (this record)
@@ -78,7 +78,14 @@ webview receives only: CameraStatus {host, port, path, hasUsername, hasPassword,
   `rand 0.8`/`rand_core 0.6`/`getrandom 0.2`/`base64 0.22`/`socket2 0.5`/`windows-sys 0.52` in the
   lock (isolated `cargo check` of retina + tokio + url: 9 s on this machine).
 - **Rule priced for the owner:** wait-for-keyframe after every (re)connect costs up to one GOP of
-  stale/blank picture (run record `architecture-decision.md` § Цена правила).
+  stale/blank picture (run record `architecture-decision.md` § Цена правила). Owner's choice (cost
+  gate 2026-11-08): black / «connecting» text while waiting, no dimmed last frame, no GOP cache.
+- **Spike numbers (2026-11-08, owner's Aqara lock, `ch2` medium stream, dev overlay):** DESCRIBE with
+  Basic auth, SETUP interleaved and PLAY accepted on the first try; codec `avc1.4D0033` (H.264 Main
+  5.1), 1280×960, ≈18 fps, 1.1–1.6 Mbit/s; **GOP 2.0 s**; first keyframe 468 ms cold; `isConfigSupported`
+  true, WebCodecs hardware path decodes without artefacts; ≥19 min continuous (S3); forced drop
+  recovered without restart (S4); Aqara Home / HomeKit live view coexist and 10 subscribe cycles do
+  not wedge the camera (S5); glass latency ≈0.5 s by stopwatch (S8). S6/S7/S9 skipped by the owner.
 - **Residual risks (accepted):** RTSP Basic/Digest is cleartext/replayable on the LAN (camera
   property); same-user malware can read our process memory (same boundary as DPAPI CurrentUser).
 - **Invariants:** no `log` backend is installed (retina logs via the `log` facade); retina errors,
