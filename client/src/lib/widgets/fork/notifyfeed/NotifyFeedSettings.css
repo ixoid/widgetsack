@@ -1,0 +1,22 @@
+/* Notifications settings — one custom row the shared plugins-panel `has-*` classes don't cover:
+   the depth mode select next to its mode-dependent number field (the srvc-target-grid idiom). */
+.canvas .plugins-panel .ntf-depth-row {
+	display: flex;
+	gap: var(--space-2, 6px);
+	align-items: flex-end;
+}
+.canvas .plugins-panel .ntf-depth-row .has-field {
+	flex: 1 1 0;
+	min-width: 0;
+	margin: 0;
+}
+.canvas .plugins-panel .ntf-depth-row select {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border-radius: var(--radius-sm, 6px);
+	border: 1px solid var(--np-border, rgba(255, 255, 255, 0.12));
+	background: var(--np-surface, rgba(0, 0, 0, 0.25));
+	color: inherit;
+	font: inherit;
+}

@@ -216,6 +216,12 @@ export const COMMANDS = {
 	cameraSubscribe: 'camera_subscribe',
 	cameraUnsubscribe: 'camera_unsubscribe',
 	cameraAck: 'camera_ack',
+	// Notifications feed (fork: widgetsack/src/fork/notifyfeed/commands.rs)
+	saveNotifyConfig: 'save_notify_config',
+	notifyConfigStatus: 'notify_config_status',
+	notifyConnect: 'notify_connect',
+	notifyDisconnect: 'notify_disconnect',
+	notifyMarkAllSeen: 'notify_mark_all_seen',
 	// AI provider + agent control (llm.rs, control.rs)
 	saveLlmConfig: 'save_llm_config',
 	llmClearKey: 'llm_clear_key',

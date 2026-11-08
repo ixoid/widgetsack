@@ -945,3 +945,17 @@ Live video from the RTSP camera configured in Plugins → Camera. Shows a short 
 | `fit` | select | "contain" | `contain`, `cover` | contain keeps the whole picture, cover fills the box and crops |
 | `caption` | text | "" |  | optional label along the bottom edge |
 | `showState` | toggle | true |  | show «connecting», «no signal» and similar over the picture |
+
+### Notifications — `notifyfeed`
+
+Windows toast notifications that arrived while you were away or in a game — app, title, body and time, newest first, grouped by app.
+
+- **Default size:** 320×320
+- **Controls:** available on the desktop.
+
+| key | type | default | options / range | description |
+| --- | --- | --- | --- | --- |
+| `title` | text | "" |  | optional title above the feed |
+| `maxRows` | number | 20 | min 1, max 100, step 1 | how many notifications to list (newest first; older ones still age out by the plugin depth) |
+| `showBody` | toggle | true |  | show the message body under each title |
+| `color` | color |  |  | unread edge / time colour (blank = theme accent) |

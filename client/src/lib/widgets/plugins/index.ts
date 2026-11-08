@@ -15,6 +15,7 @@ import { registerHwinfoPlugin } from '../fork/hwinfo';
 import { registerServerCheckPlugin } from '../fork/server-check/server-check';
 import { registerAgendaPlusPlugin } from '../fork/agendaplus/agendaplus-plugin';
 import { registerCameraPlugin } from '../fork/camera/camera-plugin';
+import { registerNotifyFeedPlugin } from '../fork/notifyfeed/notifyfeed-plugin';
 
 export type PluginLoadError = { id: string; name: string; error: string };
 
@@ -32,7 +33,8 @@ const BUILTINS: { id: string; name: string; register: () => void }[] = [
 	{ id: 'hwinfo', name: 'Hardware (HWiNFO)', register: registerHwinfoPlugin },
 	{ id: 'server-check', name: 'Server check', register: registerServerCheckPlugin },
 	{ id: 'agendaplus', name: 'Agenda+', register: registerAgendaPlusPlugin },
-	{ id: 'camera', name: 'Camera', register: registerCameraPlugin }
+	{ id: 'camera', name: 'Camera', register: registerCameraPlugin },
+	{ id: 'notifyfeed', name: 'Notifications', register: registerNotifyFeedPlugin }
 ];
 
 let registered = false;
