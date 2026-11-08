@@ -36,7 +36,7 @@ or it is blind.
 - **Found by:** owner (2026-11-08, mid-session request)
 - **Feature:** notifications feed (new vector N)
 - **Date:** 2026-11-08
-- **Status:** open
+- **Status:** closed 2026-11-08 — `grep -c "### [N-1]" docs/PRODUCT_ROADMAP.md` → 1 and the roadmap marks N-1 ✅ done (run N-1-20261108-1637, branch `feat/N-1-notifyfeed`, merge pending owner's word); runtime-eval APPROVED live on the `--multi` stand: a synthetic toast fired while the widget ran shows up with app, title, body and time and survives app restarts (`work/n1-boot-win-31058C.png` — badge 39, probe rows unread-styled); positive control: the widget before the first poll read «Reading notifications…». Remaining owner item (not a defect): confirm during a real game after the next release install.
 - **Description:** «хочу виджет с уведомлениями. часто прилетают пока в игре — а посмотреть потом негде. лента их нужна какая-то» — a scrollable feed of recent Windows toasts on the overlay. Filed as roadmap item N-1 with a research step (WinRT UserNotificationListener vs read-only wpndatabase.db).
 - **Fix:** run `/feature` on N-1 after C-1 (or `/sprint` picks it up).
 - **Check:** `grep -c "### [N-1]" docs/PRODUCT_ROADMAP.md` → 1 now; closes when N-1 is marked done in the roadmap.
