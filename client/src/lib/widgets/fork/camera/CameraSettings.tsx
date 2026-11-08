@@ -116,7 +116,6 @@ export default function CameraSettings() {
 			</label>
 			<CredentialField
 				label="Login"
-				kind="text"
 				isSet={status?.hasUsername ?? false}
 				replacing={replaceUser}
 				value={username}
@@ -125,7 +124,6 @@ export default function CameraSettings() {
 			/>
 			<CredentialField
 				label="Password"
-				kind="password"
 				isSet={status?.hasPassword ?? false}
 				replacing={replacePass}
 				value={password}

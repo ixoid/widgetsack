@@ -1,10 +1,10 @@
-// One write-only credential input (login or password) for the camera pane. The stored value is
+// One write-only credential input (login or password) for the camera pane. Both are type=password:
+// a login is half of the secret, and it must not sit readable on a screen share. The stored value is
 // never known to the webview: when one is saved the input is locked and says "set" until the
 // owner presses Replace; a blank value on save means "keep the stored one".
 
 type Props = {
 	label: string;
-	kind: 'text' | 'password';
 	isSet: boolean;
 	replacing: boolean;
 	value: string;
@@ -14,7 +14,6 @@ type Props = {
 
 export default function CredentialField({
 	label,
-	kind,
 	isSet,
 	replacing,
 	value,
@@ -27,7 +26,7 @@ export default function CredentialField({
 			<label>
 				{label}
 				<input
-					type={kind}
+					type="password"
 					autoComplete="off"
 					spellCheck={false}
 					disabled={locked}

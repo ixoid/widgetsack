@@ -281,17 +281,13 @@ describe('camera session', () => {
 		stop();
 	});
 
-	it('stops acking while the decoder is cooling down and resumes after', async () => {
+	it('keeps acking while the decoder is cooling down: an ack means the webview is alive', async () => {
 		const f = fakes();
 		const stop = startCameraSession('cam-a', canvas, f.onView, f.deps);
 		await flush();
-		const ch = f.channels[0];
 		vi.mocked(f.decoder.cooling).mockReturnValue(true);
-		ch.onmessage(frameBuf(1, true));
-		expect(f.acks).toEqual([]);
-		vi.mocked(f.decoder.cooling).mockReturnValue(false);
-		ch.onmessage(frameBuf(2, true));
-		expect(f.acks).toEqual([['cam-a', 2]]);
+		f.channels[0].onmessage(frameBuf(1, true));
+		expect(f.acks).toEqual([['cam-a', 1]]);
 		stop();
 	});
 
@@ -565,5 +561,144 @@ describe('runCameraStream visibility', () => {
 		stop();
 		await flush();
 		expect(f.order).toEqual(['sub:k', 'unsub:k']);
+	});
+});
+
+describe('restart after a silent live stall', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	type F = ReturnType<typeof fakes>;
+	const tickFor = async (ms: number) => {
+		vi.advanceTimersByTime(ms);
+		await flush();
+	};
+	const goLive = async (f: F) => {
+		await flush();
+		f.channels.at(-1)?.onmessage({ kind: 'status', state: 'live' });
+	};
+	const subs = (f: F) => f.order.filter((o) => o === 'sub:k').length;
+	const setHidden = (hidden: boolean) => {
+		Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+		document.dispatchEvent(new Event('visibilitychange'));
+	};
+
+	it('restarts at the watchdog, then 30 s and 60 s later, 60 s from then on', async () => {
+		const f = fakes();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await goLive(f);
+		await tickFor(WATCHDOG_MS); // a stall needs MORE than 10 s of silence
+		expect(subs(f)).toBe(1);
+		await tickFor(STATS_INTERVAL_MS); // the watchdog fires: first restart at once
+		await tickFor(1);
+		expect(f.order).toEqual(['sub:k', 'unsub:k', 'sub:k']);
+		expect(f.views.at(-1)).toBe('connecting');
+		await goLive(f); // the fresh session stalls 10 s later; the next restart is 30 s after the first
+		await tickFor(29_000);
+		expect(subs(f)).toBe(2);
+		await tickFor(2000);
+		expect(subs(f)).toBe(3);
+		await goLive(f);
+		await tickFor(59_000);
+		expect(subs(f)).toBe(3);
+		await tickFor(2000);
+		expect(subs(f)).toBe(4);
+		await goLive(f);
+		await tickFor(59_000);
+		expect(subs(f)).toBe(4);
+		await tickFor(2000);
+		expect(subs(f)).toBe(5);
+		stop();
+	});
+
+	it('a keyframe resets the ladder', async () => {
+		const f = fakes();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await goLive(f);
+		await tickFor(WATCHDOG_MS + STATS_INTERVAL_MS);
+		await tickFor(1);
+		expect(subs(f)).toBe(2);
+		await goLive(f);
+		f.channels.at(-1)?.onmessage(CONFIG);
+		f.channels.at(-1)?.onmessage(frameBuf(0, true));
+		await tickFor(WATCHDOG_MS + 2 * STATS_INTERVAL_MS);
+		await tickFor(1);
+		expect(subs(f)).toBe(3); // first rung again: no 30 s wait
+		stop();
+	});
+
+	it('does not restart while the wire says retrying: the backend is reconnecting', async () => {
+		const f = fakes();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await goLive(f);
+		f.channels[0].onmessage({ kind: 'status', state: 'retrying', retryInMs: 2000 });
+		await tickFor(120_000);
+		expect(f.order).toEqual(['sub:k']);
+		expect(f.views.at(-1)).toBe('noSignal');
+		stop();
+	});
+
+	it('a status heard before the timer fires cancels the pending restart', async () => {
+		const f = fakes();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await goLive(f);
+		await tickFor(WATCHDOG_MS + STATS_INTERVAL_MS);
+		await goLive(f);
+		await tickFor(1);
+		await tickFor(WATCHDOG_MS); // not stalled again yet
+		expect(subs(f)).toBe(1);
+		stop();
+	});
+
+	it('does not restart a connecting stall: the backend is still working on it', async () => {
+		const f = fakes();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await flush();
+		await tickFor(60_000);
+		expect(subs(f)).toBe(1);
+		stop();
+	});
+
+	it('teardown cancels a pending restart', async () => {
+		const f = fakes();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await goLive(f);
+		await tickFor(WATCHDOG_MS + STATS_INTERVAL_MS);
+		await tickFor(1);
+		await goLive(f);
+		await tickFor(WATCHDOG_MS + STATS_INTERVAL_MS); // second rung pending (20 s left)
+		stop();
+		await flush();
+		const before = [...f.order];
+		await tickFor(300_000);
+		expect(f.order).toEqual(before);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('hiding the page cancels a pending restart', async () => {
+		const f = fakes();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await goLive(f);
+		await tickFor(WATCHDOG_MS + STATS_INTERVAL_MS);
+		await tickFor(1);
+		await goLive(f);
+		await tickFor(WATCHDOG_MS + STATS_INTERVAL_MS);
+		setHidden(true);
+		await tickFor(HIDE_DEBOUNCE_MS);
+		const before = subs(f);
+		await tickFor(300_000);
+		expect(subs(f)).toBe(before);
+		setHidden(false);
+		stop();
+	});
+
+	it('StrictMode mount/unmount/mount leaves no timers behind', async () => {
+		const f = fakes();
+		runCameraStream('k', canvas, f.onView, f.deps)();
+		const stop = runCameraStream('k', canvas, f.onView, f.deps);
+		await goLive(f);
+		stop();
+		await flush();
+		expect(vi.getTimerCount()).toBe(0);
 	});
 });

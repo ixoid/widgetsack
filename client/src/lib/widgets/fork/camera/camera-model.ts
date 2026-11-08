@@ -47,11 +47,19 @@ export const VIEW_TEXT: Record<CameraView, string> = {
 	unavailable: 'Camera unavailable — check Plugins → Camera'
 };
 
-/** The codec name is shown when known (a wire name like H265 or the CONFIG string; never a secret). */
-export const stateText = (v: CameraView, codec: string | null = null): string =>
-	v === 'unsupportedCodec' && codec
-		? `Unsupported codec (${codec}): the camera must send H.264. Change the stream in Plugins → Camera.`
+const CODEC_NAME_MAX = 32;
+
+/** A hostile camera controls the SDP codec name: show it only when printable ASCII, and capped. */
+const safeCodec = (codec: string | null): string | null =>
+	codec && /^[ -~]+$/.test(codec) ? codec.slice(0, CODEC_NAME_MAX) : null;
+
+/** The codec name is shown when known and safe (a wire name like H265 or the CONFIG string). */
+export const stateText = (v: CameraView, codec: string | null = null): string => {
+	const name = safeCodec(codec);
+	return v === 'unsupportedCodec' && name
+		? `Unsupported codec (${name}): the camera must send H.264. Change the stream in Plugins → Camera.`
 		: VIEW_TEXT[v];
+};
 
 const FROM_WIRE: Record<CameraWireState, CameraView> = {
 	notConfigured: 'notConfigured',

@@ -70,6 +70,8 @@ describe('CameraSettings', () => {
 		expect(login().placeholder).toBe('set');
 		expect(pass().disabled).toBe(true);
 		expect(pass().type).toBe('password');
+		expect(login().type).toBe('password');
+		expect(login().autocomplete).toBe('off');
 		expect(login().value).toBe('');
 		expect(pass().value).toBe('');
 		expect(pass().autocomplete).toBe('off');

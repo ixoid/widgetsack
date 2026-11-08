@@ -55,6 +55,21 @@ describe('unsupported codec text', () => {
 	});
 });
 
+describe('codec name sanitising', () => {
+	const plain =
+		'Unsupported codec: the camera must send H.264. Change the stream in Plugins → Camera.';
+	it('caps a 1 000-char name at 32 characters', () => {
+		expect(stateText('unsupportedCodec', 'A'.repeat(1000))).toBe(
+			`Unsupported codec (${'A'.repeat(32)}): the camera must send H.264. Change the stream in Plugins → Camera.`
+		);
+	});
+	it('omits a name with control or non-ASCII characters', () => {
+		expect(stateText('unsupportedCodec', 'H2\u0000\n65')).toBe(plain);
+		expect(stateText('unsupportedCodec', 'H\u00e9')).toBe(plain);
+		expect(stateText('unsupportedCodec', '')).toBe(plain);
+	});
+});
+
 describe('copy', () => {
 	// Literal strings for every state: a wrong word fails here, not through VIEW_TEXT itself.
 	const EXPECTED: Record<CameraView, string> = {

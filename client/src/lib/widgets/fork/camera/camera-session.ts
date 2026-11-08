@@ -20,6 +20,7 @@ import {
 	isRefusedError,
 	reduce,
 	viewOf,
+	WATCHDOG_MS,
 	type CameraView,
 	type DecoderProblem,
 	type ModelEvent
@@ -32,6 +33,20 @@ import type { CameraStatus } from './camera-types';
 export type ViewListener = (v: CameraView, codec?: string) => void;
 
 export const HIDE_DEBOUNCE_MS = 1500;
+/**
+ * Time from a (re)start to the next restart when a live stream goes silent without any status
+ * (the backend dropped this subscriber and says nothing). The last rung repeats.
+ */
+export const RESTART_LADDER_MS = [10_000, 30_000, 60_000];
+
+/** Events runCameraStream needs from a session to run the restart ladder. */
+export type SessionHooks = {
+	/** Live and silent past the watchdog with no status heard since: the backend may have dropped us. */
+	onStall(): void;
+	/** A status, CONFIG or keyframe arrived: the stall is over. */
+	onStallCleared(): void;
+	onKeyframe(): void;
+};
 export const STATS_INTERVAL_MS = 1000;
 
 export type SessionDeps = {
@@ -75,9 +90,11 @@ export function startCameraSession(
 	key: string,
 	canvas: CanvasLike,
 	onView: ViewListener,
-	deps: SessionDeps = defaultSessionDeps
+	deps: SessionDeps = defaultSessionDeps,
+	hooks?: SessionHooks
 ): () => void {
 	let stopped = false;
+	let stalledLive = false;
 	let unsubscribed = false;
 	let model = initialModel(deps.now());
 	let shown: CameraView = 'connecting'; // the hook starts there
@@ -87,7 +104,15 @@ export function startCameraSession(
 	const dispatch = (e: ModelEvent) => {
 		model = reduce(model, e, deps.now());
 		const v = viewOf(model);
-		if (stopped || v === shown) return;
+		if (stopped) return;
+		// Only a live stall counts: a retrying/connecting wire means the backend is on it.
+		const nowStalled = model.stalled && model.wire === 'live';
+		if (nowStalled !== stalledLive) {
+			stalledLive = nowStalled;
+			if (nowStalled) hooks?.onStall();
+			else hooks?.onStallCleared();
+		}
+		if (v === shown) return;
 		shown = v;
 		// Only live may leave pixels on screen: a later show starts black, not on a stale frame.
 		if (v !== 'live') clearCanvas(canvas);
@@ -129,10 +154,11 @@ export function startCameraSession(
 					nowMs: deps.now()
 				});
 				dispatch({ type: 'frame', keyframe: parsed.keyframe });
+				if (parsed.keyframe) hooks?.onKeyframe();
 				decoder.push(parsed);
-				// no acks while the decoder is off after an error burst: the backend must see us idle
-				if (!decoder.cooling() && shouldAck(parsed.keyframe))
-					deps.ack(key, parsed.seq).catch(() => undefined);
+				// Acks stay on during a decoder cooldown: they tell the backend the webview is alive, and
+				// without them it drops the subscriber for any GOP longer than its ack deadline.
+				if (shouldAck(parsed.keyframe)) deps.ack(key, parsed.seq).catch(() => undefined);
 			}
 		} else if (isStatusMsg(msg)) {
 			dispatch({ type: 'status', msg });
@@ -173,13 +199,43 @@ export function runCameraStream(
 	onView: ViewListener,
 	deps: SessionDeps = defaultSessionDeps
 ): () => void {
-	let stop: (() => void) | null = startCameraSession(key, canvas, onView, deps);
+	let stop: (() => void) | null = null;
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let restartTimer: ReturnType<typeof setTimeout> | undefined;
+	let rung = 0;
+
+	const cancelRestart = () => {
+		clearTimeout(restartTimer);
+		restartTimer = undefined;
+	};
+	const restart = () => {
+		restartTimer = undefined;
+		rung++;
+		stop?.(); // unsubscribe is queued before the new subscribe for this key
+		clearCanvas(canvas);
+		onView('connecting');
+		stop = launch();
+	};
+	const hooks: SessionHooks = {
+		// the ladder counts from the (re)start and the watchdog already used 10 s of it
+		onStall: () => {
+			cancelRestart();
+			const at = RESTART_LADDER_MS[Math.min(rung, RESTART_LADDER_MS.length - 1)];
+			restartTimer = setTimeout(restart, Math.max(0, at - WATCHDOG_MS));
+		},
+		onStallCleared: cancelRestart,
+		onKeyframe: () => {
+			rung = 0;
+		}
+	};
+	const launch = () => startCameraSession(key, canvas, onView, deps, hooks);
+	stop = launch();
 
 	const onVisibility = () => {
 		if (document.hidden) {
 			timer ??= setTimeout(() => {
 				timer = undefined;
+				cancelRestart();
 				stop?.();
 				stop = null;
 			}, HIDE_DEBOUNCE_MS);
@@ -190,7 +246,7 @@ export function runCameraStream(
 		if (!stop) {
 			clearCanvas(canvas); // the paused session's last frame must not flash before the new one
 			onView('connecting');
-			stop = startCameraSession(key, canvas, onView, deps);
+			stop = launch();
 		}
 	};
 	document.addEventListener('visibilitychange', onVisibility);
@@ -198,6 +254,7 @@ export function runCameraStream(
 	return () => {
 		document.removeEventListener('visibilitychange', onVisibility);
 		clearTimeout(timer);
+		cancelRestart();
 		stop?.();
 	};
 }
