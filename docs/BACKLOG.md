@@ -43,6 +43,50 @@ or it is blind.
 
 ## LOW / Cosmetic
 
+### [qa] Camera: occlusion is not detected, the decoder keeps running under a fullscreen app
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/fork/camera/camera-session.ts` (hidden rule), `widgetsack/src/fork/camera/registry.rs`
+- **Found by:** architect + owner (spike S9 skipped, accepted for v1; run C-1-20261108-1134)
+- **Feature:** C-1 camera widget
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** the session stops only on `document.hidden`. A topmost click-through overlay covered by a fullscreen game may never get `hidden`, so RTSP (about 1.1–1.6 Mbit/s), the decoder and the canvas keep running while nobody sees them. Owner skipped S9; cost accepted.
+- **Fix:** Rust-side occlusion detection (foreground fullscreen window or display off, as `clickthrough.rs`/window-layer code already knows) that drives the same grace + unsubscribe path; or measure S9 first and drop the item if `hidden` does fire.
+- **Check:** none until built — manual: start a fullscreen game, `camera_subscribe` count and the lock's RTSP session drop within about 4 s.
+
+### [qa] Camera: no `isTypeSupported`/MSE (A′) fallback if WebCodecs cannot decode
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/fork/camera/camera-decoder.ts`
+- **Found by:** architect (ADR-005, option A′)
+- **Feature:** C-1 camera widget
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** spike GO showed `VideoDecoder` works on this machine, so the fMP4-muxed MSE `<video>` renderer was never built. A WebView2 without WebCodecs H.264 shows "Video decoder unavailable" and nothing else.
+- **Fix:** only if it ever bites: mux length-prefixed AUs to fMP4 in TS and feed `MediaSource` when `MediaSource.isTypeSupported(codec)`; Rust unchanged.
+- **Check:** none — build on demand.
+
+### [qa] Camera: pre-existing `v8 ignore` markers in new code
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/fork/camera/camera-decoder.ts:163`, `client/src/lib/widgets/fork/camera/CameraSettings.tsx:58`
+- **Found by:** qa-reviewer (review-f3, note only)
+- **Feature:** C-1 camera widget
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** two coverage-ignore markers sit in fork camera code from earlier batches; they hide branches from the 100 % ratchet.
+- **Fix:** cover the branches with the injected fakes and remove the markers, or add a one-line WHY to each.
+- **Check:** `grep -rn "v8 ignore" client/src/lib/widgets/fork/camera` → no output (positive control: the same grep over `client/src/lib` finds upstream markers).
+
+### [qa] Upstream `reconcileOverlays` info log floods while Studio is open
+- **Severity:** LOW
+- **File:** `client/src/lib/overlay.ts:~856` ("legacy key mapping" log)
+- **Found by:** coordinator observation (run C-1-20261108-1134); upstream code, do not fix in the fork
+- **Feature:** upstream overlay reconcile
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** with Studio open, the "legacy key mapping (hints: …)" info line is written on every reconcile, 500+ lines per session in the dev log. Noise only; it hides real lines when grepping `work/tauri-dev.log`.
+- **Fix:** note only. If it matters, log on change of the mapping, or report upstream; a fork edit would add merge friction in `overlay.ts`.
+- **Check:** `grep -c "legacy key mapping" work/tauri-dev.log` after a long Studio session → large count (reproduces).
+
 ### [owner] CPU and GPU cards: same gauge order (temperature and clock swap places)
 - **Severity:** LOW
 - **File:** `examples/layouts/own-desktop.widgets.json` (CPU card gauges on `hw.cpu.clock.max` / `hw.cpu.temp`; GPU card gauges) — live layout `%APPDATA%io.github.gyngwidgets.json`

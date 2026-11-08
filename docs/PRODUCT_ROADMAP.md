@@ -51,12 +51,23 @@
 
 ## Vector C — Cameras (brief stage 2)
 
-### [C-1]: Camera widget via go2rtc
+### [C-1]: Camera widget — native RTSP in-process (retina → Tauri Channel → WebCodecs)
 ```
-/feature Camera widget (brief stage 2): `camera` fork widget = <video muted autoplay playsinline> with a small transport module (WebRTC via go2rtc WHEP first, MSE fallback), reconnect with backoff, "no signal" state, pause when hidden/unmounted; config plugins/camera.json via secure_config (go2rtc base URL default http://127.0.0.1:1984, stream list); Rust camera_probe (GET /api) and an optional supervisor that starts a configured go2rtc.exe as a child (job object, studio_agent.rs pattern) behind a toggle; CSP connect-src extended ONLY for the configured loopback origin (ADR + security review); example go2rtc.yaml without credentials. Done when one camera shows live video ≤ ~1 s latency and recovers after the camera goes away. See docs/dev/fork-stage0-plan.md § Stage 2.
+/feature Camera widget (brief stage 2), transport decided by the owner 2026-11-08 and recorded in docs/decisions/005-camera-native-rtsp-transport.md: a `camera` fork widget that plays one LAN camera over RTSP/TCP inside the app process. Rust (widgetsack/src/fork/camera/): the `retina` client (pinned =0.4.21) pulls H.264 access units and sends them over a per-subscriber Tauri `Channel` (media as Raw bytes, status as Json); the webview decodes them with WebCodecs `VideoDecoder` and draws onto a `<canvas>` (client/src/lib/widgets/fork/camera/). No go2rtc, no child process, no listening port, no CSP or capabilities change. Credentials: address, login and password are entered only in Studio → Plugins → Camera, stored in plugins/camera.json through secure_config (DPAPI), write-only in the pane, never returned to the webview, never in logs or errors (errors cross as an enum). One shared RTSP session fans out to N camera widgets; it starts on the first subscriber and is torn down 2 s after the last one leaves (the lock has few RTSP slots). Overlay gate: an overlay window may subscribe or probe only if the SAVED layout contains a Camera widget (studio bypasses). Resilience: reconnect backoff 1, 2, 4, 8, 16, 30 s (reset after 10 s live), 401/403 is terminal with a 60 s lockout until the config is saved, 8 s stall detection, 24-frame in-flight backpressure with client acks, wait-for-keyframe after every (re)connect. Widget states: connecting, live, no signal, auth failed (names the Aqara "RTSP LAN Preview" cause), unsupported codec, not configured, credentials missing, decoder unavailable, decode error, refused (layout not saved). Out of scope: H.265, audio, PTZ, multi-camera config or grid, ONVIF, recording, GOP cache and dimmed last frame (owner's choice 2026-11-08: black "connecting" while waiting for a keyframe), Rust-side occlusion detection. Done when the owner's camera shows live video at about 1 s or less glass-to-glass on the overlay, recovers after unplug/replug without an app restart, and the acceptance criteria below hold.
 ```
-**Priority:** Phase 1 (owner request 2026-11-07: "мне надо сделать просмотр видео с камеры") · **Depends on:** none · **Est. size/mode:** L · DATA — CSP change is a security boundary
-**Owner facts (no secrets here):** one IP camera on the LAN, RTSP on a non-default port (8554), stream path `ch2`, basic-auth credentials in the URL. The full URL with credentials is held by the owner locally (`work/camera.local.md`, gitignored) and must only ever land in the local `go2rtc.yaml`; the committed `go2rtc.example.yaml` uses placeholders.
+**Priority:** Phase 1 (owner request 2026-11-07: "мне надо сделать просмотр видео с камеры") · **Depends on:** none · **Est. size/mode:** XL · DATA — new network dependency (`retina`), secure_config, new IPC commands (trust surface)
+**Spike result:** GO 2026-11-08 (owner at the keyboard, dev overlay, Aqara lock `ch2`): codec `avc1.4D0033` (H.264 Main 5.1), 1280×960, ≈18 fps, 1.1–1.6 Mbit/s, GOP 2.0 s, first keyframe 468 ms cold, `isConfigSupported` true, ≥19 min continuous, forced drop recovered, Aqara Home / HomeKit coexist and 10 subscribe cycles do not wedge the camera, glass latency ≈0.5 s. S6, S7 and S9 skipped by the owner. Numbers in ADR-005.
+**Acceptance criteria (as they stand after the spike):**
+1. Live video on the dev overlay, confirmed by the owner; automated: the Vitest state machine reaches `live` on a fake channel and fake decoder, and the Rust session pipeline runs against a fake RTSP server on `127.0.0.1:0`.
+2. Latency about 1 s or less (measured ≈0.5 s); hard fail above 3 s.
+3. No signal within 10 s of the stream stalling (client watchdog, fake-clock test); after a stall the stage goes black with the text, no stale frame.
+4. Reconnect with the backoff ladder above; a 401/403 does not retry in a loop (60 s lockout, cleared by a save); video resumes after replug without restarting the app.
+5. Credentials never leave the backend: sentinel leak test over status, probe, save result, events, `Debug` and every error `Display`; DPAPI file holds no plaintext; no argv, no generated file, no local API; `git diff --cached | grep -iE "rtsp://[^ ]*:[^ ]*@|token="` prints nothing.
+6. Demand gate: no camera widget mounted means no RTSP socket; two widgets share one session; the last unsubscribe releases it after the 2 s grace; window destroy and app exit release everything.
+7. Input validation in Rust: `rtsp` scheme only, no whitespace in host, port 1–65535, path length cap, userinfo split off and never stored in the URL, connect/describe/play timeouts, access-unit size cap.
+8. `tauri.conf.json`, `capabilities/*`, `layout_grants.rs`, `secure_config.rs` untouched; overlay subscribe and probe refused unless the saved layout contains a Camera widget.
+9. All gates green (`npm run check; lint; test:coverage; build; check:docs`, `cargo fmt --check; test; clippy -D warnings`); layout snapshot taken first.
+**Owner facts (no secrets here):** one IP camera on the LAN (Aqara door lock), RTSP on a non-default port (8554), stream path `ch2`, basic auth. The credentials are held by the owner locally (`work/camera.local.md`, gitignored) and are typed only into the Studio pane; no agent reads that file.
 
 ## Vector K — Calendar (brief stage 3)
 
@@ -90,6 +101,6 @@
 2. S-1 and H-1 — done, in `main`.
 3. W-2, K-1 and the LOW backlog items — done, in `main`.
 3a. T-1 — done, in `main` (2026-11-08).
-4. C-1 — after S-1; needs the owner at the keyboard (CSP decision, real camera, go2rtc).
+4. C-1 — after S-1; needs the owner at the keyboard (real camera); transport decided 2026-11-08 (native RTSP, no go2rtc, no CSP change).
 5. W-3, then P-1.
 6. N-1 — notification feed (owner request 2026-11-08), after C-1.

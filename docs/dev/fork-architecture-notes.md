@@ -107,6 +107,95 @@ readings), `hwinfoCatalog.ts` (pure pane logic), `HwinfoSettings.tsx` (container
 `plugins/index.ts` (1 BUILTINS row), `contract.ts` (4 names), `Cargo.toml` (`Win32_System_Memory`).
 Decision record: `docs/decisions/003-hwinfo-sensor-source.md`.
 
+### Camera (C-1, built 2026-11-08)
+
+Native RTSP inside the app, no go2rtc, no child, no port, no CSP change. Decision record and spike
+numbers: `docs/decisions/005-camera-native-rtsp-transport.md`. Traps: CLAUDE.md Gotchas (`retina` logs
+through `log`; `Session` drop inside tokio; `dropped` vs `superseded`). The older "Camera (stage 2)"
+analysis below is the pre-decision go2rtc view and is kept only for the CSP facts.
+
+**Rust, `widgetsack/src/fork/camera/`** (pure seams first, IO last):
+
+| File | Owns |
+| --- | --- |
+| `config.rs` | `split_url` (moves pasted `user:pass@` into the secret fields), `validate`, `Secret` (`Debug`/`Display` print `***`), merge rules (blank keeps, clear, host/port change drops credentials), `secure_config` load/save, secret-free `to_status` |
+| `types.rs` | every struct that crosses the bridge (`CameraStatus`, `ProbeResult`, `SaveResult`, `StatusEvent`, `CameraErrorKind`); none can hold a `Secret` |
+| `error_map.rs` | phase + RTSP status code to `CameraErrorKind`; never inspects retina error text |
+| `framing.rs` | binary CONFIG/FRAME messages, `with_seq` re-stamp, `testdata/framing-golden.hex` |
+| `backoff.rs` | retry ladder 1, 2, 4, 8, 16, 30, 30 s; reset after 10 s live |
+| `flow.rs` | per-subscriber backpressure (`plan_frame`, `ack`, explicit `now`) |
+| `registry.rs` | `Hub`: `(window label, key)` table, fan-out sink, 2 s grace, restart, CONFIG + latest-keyframe cache |
+| `gate.rs` | `layout_has_camera`, `authorize(label, saved)`; `layout_grants.rs` is not edited |
+| `probe.rs` | `camera_probe`: DESCRIBE-only, single-flight, throttled, shares the auth lockout |
+| `worker.rs` | the retina session pump (describe, setup, play, demuxed), 8 s stall timeout, cooperative shutdown |
+| `commands.rs` | six commands: `save_camera_config` and `camera_config_status`, `camera_probe`, `camera_subscribe`, `camera_unsubscribe`, `camera_ack` |
+| `mod.rs` | `CameraState`, shared auth-lockout/generation, `forget_window` |
+| `fake_rtsp.rs` | `#[cfg(test)]` RTSP server on `127.0.0.1:0` |
+
+**Client, `client/src/lib/widgets/fork/camera/`:** `camera-types.ts` (mirror of `types.rs`),
+`camera-commands.ts` (typed `invoke`s), `camera-protocol.ts` (parses the same golden vector),
+`camera-decoder.ts` (WebCodecs adapter, all browser APIs injected), `camera-model.ts` (pure reducer,
+states and copy table, watchdogs), `camera-ack.ts` (ack cadence), `camera-session.ts` (Channel to
+protocol to decoder, per-key serialised subscribe/unsubscribe, hidden debounce), `camera-stats.ts` +
+`camera-diagnostics.ts` (Diagnostics readout), `useCameraStream.ts` (React glue), `Camera.tsx`
+(props-only meter) + `Camera.css`, `CameraSettings.tsx` + `CredentialField.tsx` + `camera-pane.ts` +
+`useCameraProbe.ts` (Studio pane), `camera-plugin.ts` (`registerPlugin`; named so it never collides
+with `Camera.tsx` on a case-insensitive FS). The widget does not use the `SensorSample` hub: no
+sensor ids, `ActiveSensors` is untouched, demand is the subscribe count.
+
+Core touches: `main.rs` (`.manage(CameraState)`, six handler entries, `forget_window` in `Destroyed`),
+`Cargo.toml` (`retina = "=0.4.21"`, `url`), `bridge/contract.ts` (six names), `plugins/index.ts` (one
+BUILTINS row), `docs/widgets.md` via `gen:docs`. Untouched on purpose: `tauri.conf.json`,
+`capabilities/*`, `layout_grants.rs`, `secure_config.rs`, `sensors.rs`.
+
+**Data path.** Camera, RTSP/TCP interleaved, `retina` demuxes to H.264 access units
+(`FrameFormat::MP4`: 4-byte length-prefixed NALs, `extra_data()` = avcC), `framing.rs` builds the
+bytes, the hub re-stamps the seq per subscriber and sends them on each subscriber's `Channel` (media
+as `Raw`, status as `Json`). In the webview `camera-protocol.ts` parses the message,
+`camera-decoder.ts` configures `VideoDecoder` with the codec string and avcC `description`, keeps
+the newest decoded frame and draws it onto the canvas in `requestAnimationFrame`.
+
+**Lifecycle** (one config, so one worker however many widgets):
+
+| Event | Client | Rust |
+| --- | --- | --- |
+| mount (Studio preview or overlay) | `camera_subscribe(channel, key = widget id)`, idempotent per `(window, key)` | first subscriber starts the worker; a late joiner gets status, cached CONFIG and keyframe at once, deltas after the next real keyframe |
+| hidden | close decoder, 1.5 s debounce, then `camera_unsubscribe`; resubscribe on visible | last unsubscribe starts a 2 s grace; a subscribe inside it cancels it |
+| last unsubscribe | - | after the grace: cooperative shutdown, the session is dropped inside the task (TEARDOWN), join with timeout, then abort |
+| window destroyed | - | `forget_window(state, label)` from `main.rs` |
+| config saved | pane shows `SaveResult` | generation bump, worker restarts in a background task, auth lockout cleared |
+
+**Flow control.** The Tauri channel queue is unbounded and gives no lag signal, so the client acks
+(`camera_ack(key, seq)`) every 8 frames and on every keyframe. `in_flight` = frames sent minus
+`ack seq + 1`; above 24 deltas are dropped and the subscriber waits for a keyframe; no ack for 15 s
+while frames are outstanding drops the subscriber (dead webview). A new subscriber gets the cached CONFIG
+and the latest keyframe, not a GOP; the cache is cleared whenever the stream leaves `live`. The seq is
+per subscriber, counts frames actually sent (no gaps) and never resets across CONFIG or reconnect, so
+the client must not infer drops from seq. Client side: `decodeQueueSize > 8` drops deltas until the
+next keyframe.
+
+**Layout gate.** `camera_subscribe` and `camera_probe` from a non-studio window call
+`gate::authorize_saved`: the SAVED `widgets.json` must contain an object with `"type": "camera"`;
+missing, unreadable or corrupt fails closed with one fixed string that the client maps to the
+`refused` state ("Save the layout in Studio"). Studio previews unsaved edits and bypasses it.
+`save_camera_config` is studio-only; `camera_ack` and `camera_unsubscribe` only touch the caller's
+own `(window, key)`.
+
+**Redaction invariants.** The URL stored has no userinfo; the password is a `Secret`; DTOs crossing
+the bridge contain no `Secret`, username value or full URL (the webview sees host/port/path and
+`hasUsername`/`hasPassword`). Errors are reduced to phase + status code, then to an enum; no
+`retina::Error`, `Credentials`, `SessionOptions` or `CameraConfig` is ever formatted; validation
+strings are fixed and never echo input. No `log` backend is installed. A leak test with sentinel values
+covers serde output, `Debug` and every error `Display`. A 401/403 from the worker or the probe sets a
+60 s lockout (until a save), so a wrong password is never retried on a timer.
+
+**Tests.** Rust: pure tables for each seam, plus a fake RTSP server on `127.0.0.1:0` (Basic
+challenge, interleaved SETUP, one IDR and a few P-slices) for probe, worker, restart and grace. Time
+rules take an explicit `now`; `tokio` has no `test-util` feature here, so there is no paused clock.
+The golden framing vector `testdata/framing-golden.hex` is read by both the Rust encoder test and
+`camera-protocol.test.ts`. Client (Vitest, happy-dom has no `VideoDecoder`): a fake Channel, fake
+decoder factory, fake visibility and fake clock drive the model, session, hook and meter.
+
 ### Server check (stage 1)
 
 - `ping` widget: Rust ICMP via `IcmpSendEcho` (no admin, no raw socket), 3 s interval, 1 s
@@ -118,7 +207,7 @@ Decision record: `docs/decisions/003-hwinfo-sensor-source.md`.
 - Missing: TCP connect check, per-target history/sparkline, "last down at", one card with N
   targets, Windows toast (no notification plugin; `tauri-plugin-notification` would be new).
 
-### Camera (stage 2)
+### Camera (stage 2, pre-decision analysis; superseded by ADR-005 above)
 
 - No video widget. `iframe` loads only `https:` (CSP `frame-src 'self' https:
   http://customhtml.localhost`), `customhtml` runs under `connect-src 'none'`.
