@@ -325,6 +325,7 @@ async fn main() -> Result<(), ()> {
         .manage(agenda::AgendaState::default())
         .manage(fork::hwinfo::HwinfoState::default())
         .manage(fork::server_check::ServerCheckState::default())
+        .manage(fork::notifyfeed::NotifyState::default())
         .manage(fork::camera::CameraState::default())
         .manage(timings::SubsystemTimings::default())
         .manage(sensors::ActiveSensors::default())
@@ -466,6 +467,11 @@ async fn main() -> Result<(), ()> {
             fork::server_check::server_check_config_status,
             fork::server_check::server_check_connect,
             fork::server_check::server_check_disconnect,
+            fork::notifyfeed::commands::save_notify_config,
+            fork::notifyfeed::commands::notify_config_status,
+            fork::notifyfeed::commands::notify_connect,
+            fork::notifyfeed::commands::notify_disconnect,
+            fork::notifyfeed::commands::notify_mark_all_seen,
             fork::camera::commands::save_camera_config,
             fork::camera::commands::camera_config_status,
             fork::camera::commands::camera_probe,

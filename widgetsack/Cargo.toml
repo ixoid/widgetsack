@@ -142,6 +142,14 @@ windows = { version = "0.62", features = [
     "Win32_Media_Audio_Endpoints",
     "Foundation",
     "Foundation_Collections",
+    # Windows toast notification listener (fork/notifyfeed, ADR slug "notifyfeed-source"):
+    # UserNotificationListener + the Toast binding's GetTextElements (no XML parsing dep).
+    # UI_Notifications_Management implies UI_Notifications; both listed for intent-documentation.
+    "UI_Notifications",
+    "UI_Notifications_Management",
+    # UserNotification.AppInfo (display name + AUMID for the exclusion matcher) is cfg-gated on
+    # this feature in windows 0.62 — the two listener features alone do not compile it in.
+    "ApplicationModel",
 ] }
 
 [features]
