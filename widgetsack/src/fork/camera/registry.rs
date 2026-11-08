@@ -38,6 +38,16 @@ use super::worker::{LoadConfig, Sink, WorkerHandle, WorkerOptions, wait_stopped}
 /// How long the worker outlives its last subscriber.
 pub const GRACE: Duration = Duration::from_secs(2);
 
+/// Per-window and total subscriber caps. Keyframes bypass the flow window, so every subscriber that
+/// stops acking can pin megabytes in its channel queue; a real widget needs one subscriber.
+pub const MAX_PER_WINDOW: usize = 8;
+pub const MAX_TOTAL: usize = 16;
+/// The refusal text; fixed, nothing from the request.
+pub const TOO_MANY: &str = "too many camera subscribers";
+/// After a worker ended by itself, a subscribe does not respawn it sooner than this (the first
+/// backoff step), so a remounting widget cannot hammer the camera's login or our lock.
+pub const RESPAWN_FLOOR: Duration = Duration::from_secs(1);
+
 /// What a worker needs to (re)start; kept so a config save can restart it.
 #[derive(Clone)]
 pub struct Start {
@@ -193,6 +203,7 @@ impl<S: Sink> Inner<S> {
 pub struct Hub<S: Sink> {
     inner: Mutex<Inner<S>>,
     grace: Duration,
+    respawn_floor: Duration,
     /// Counts finished grace checks, so tests can wait for one instead of sleeping.
     #[cfg(test)]
     idle_checks: std::sync::atomic::AtomicUsize,
@@ -222,6 +233,10 @@ impl<S: Sink> Sink for FanoutSink<S> {
 
 impl<S: Sink> Hub<S> {
     pub fn new(grace: Duration) -> Self {
+        Self::with_floor(grace, RESPAWN_FLOOR)
+    }
+
+    pub fn with_floor(grace: Duration, respawn_floor: Duration) -> Self {
         Self {
             inner: Mutex::new(Inner {
                 subs: HashMap::new(),
@@ -233,6 +248,7 @@ impl<S: Sink> Hub<S> {
                 stopping: None,
             }),
             grace,
+            respawn_floor,
             #[cfg(test)]
             idle_checks: std::sync::atomic::AtomicUsize::new(0),
         }
@@ -248,20 +264,41 @@ impl<S: Sink> Hub<S> {
     }
 
     /// Adds (or replaces) the subscriber `(label, key)`, starting the worker if none is running.
+    /// Refused when a cap is hit; replacing an existing `(label, key)` is always allowed.
     /// Must run inside the tokio runtime.
-    pub fn subscribe(self: &Arc<Self>, label: &str, key: &str, sink: S, start: Start) {
+    pub fn subscribe(
+        self: &Arc<Self>,
+        label: &str,
+        key: &str,
+        sink: S,
+        start: Start,
+    ) -> Result<(), &'static str> {
         let mut g = self.lock();
+        let id = (label.to_string(), key.to_string());
+        if !g.subs.contains_key(&id) {
+            let in_window = g.subs.keys().filter(|(l, _)| l == label).count();
+            if in_window >= MAX_PER_WINDOW || g.subs.len() >= MAX_TOTAL {
+                return Err(TOO_MANY);
+            }
+        }
         g.runtime = Some(Handle::current());
         // Cancels a pending grace timer.
         g.grace_epoch += 1;
         // Replace first, so a stale entry for the same widget never lingers.
-        g.subs.remove(&(label.to_string(), key.to_string()));
+        g.subs.remove(&id);
         // A worker that ended by itself (auth failure, unsupported codec, no config) is replaced:
-        // a new subscribe is the owner asking again.
-        if g.worker.as_ref().is_none_or(|w| w.handle.is_finished()) {
+        // a new subscribe is the owner asking again, but not faster than the floor. Inside it the
+        // subscriber is attached to the ended worker and greeted with its cached terminal status.
+        let respawn = g.worker.as_ref().is_none_or(|w| {
+            w.handle
+                .ended_ago()
+                .is_some_and(|ago| ago >= self.respawn_floor)
+        });
+        if respawn {
             self.spawn_worker(&mut g, start);
         }
         self.attach(&mut g, label, key, sink, Instant::now());
+        Ok(())
     }
 
     fn attach(&self, g: &mut Inner<S>, label: &str, key: &str, sink: S, now: Instant) {
@@ -835,8 +872,9 @@ mod tests {
         let hub = graceful_hub();
         let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
         let (a, b) = (RecSink::new(), RecSink::new());
-        hub.subscribe("studio", "w1", a.clone(), start.clone());
-        hub.subscribe("overlay-1", "w2", b.clone(), start);
+        hub.subscribe("studio", "w1", a.clone(), start.clone())
+            .unwrap();
+        hub.subscribe("overlay-1", "w2", b.clone(), start).unwrap();
         for sink in [&a, &b] {
             wait_for("live", || sink.states().contains(&StreamState::Live)).await;
         }
@@ -860,8 +898,9 @@ mod tests {
         let hub = graceful_hub();
         let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
         let (a, b) = (RecSink::new(), RecSink::new());
-        hub.subscribe("studio", "w1", a.clone(), start.clone());
-        hub.subscribe("studio", "w2", b.clone(), start);
+        hub.subscribe("studio", "w1", a.clone(), start.clone())
+            .unwrap();
+        hub.subscribe("studio", "w2", b.clone(), start).unwrap();
         wait_for("live", || a.states().contains(&StreamState::Live)).await;
 
         hub.unsubscribe("studio", "w1");
@@ -881,13 +920,14 @@ mod tests {
         let hub = graceful_hub();
         let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
         let a = RecSink::new();
-        hub.subscribe("studio", "w1", a.clone(), start.clone());
+        hub.subscribe("studio", "w1", a.clone(), start.clone())
+            .unwrap();
         wait_for("live", || a.states().contains(&StreamState::Live)).await;
 
         hub.unsubscribe("studio", "w1");
         // StrictMode-style remount: a fresh channel for the same widget.
         let again = RecSink::new();
-        hub.subscribe("studio", "w1", again.clone(), start);
+        hub.subscribe("studio", "w1", again.clone(), start).unwrap();
         wait_for("the cancelled grace check", || idle_checks(&hub) == 1).await;
         assert_eq!(fake.closed(), 0, "the shutdown was cancelled");
         assert_eq!(fake.accepts(), 1, "no second session");
@@ -907,8 +947,9 @@ mod tests {
         let hub = graceful_hub();
         let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
         let (a, b) = (RecSink::new(), RecSink::new());
-        hub.subscribe("overlay-1", "w1", a.clone(), start.clone());
-        hub.subscribe("studio", "w2", b.clone(), start);
+        hub.subscribe("overlay-1", "w1", a.clone(), start.clone())
+            .unwrap();
+        hub.subscribe("studio", "w2", b.clone(), start).unwrap();
         wait_for("live", || b.states().contains(&StreamState::Live)).await;
 
         hub.forget_window("overlay-1");
@@ -932,7 +973,7 @@ mod tests {
             options: fast(),
         };
         let a = RecSink::new();
-        hub.subscribe("studio", "w1", a.clone(), start);
+        hub.subscribe("studio", "w1", a.clone(), start).unwrap();
         wait_for("auth failure", || {
             a.states().contains(&StreamState::AuthFailed)
         })
@@ -992,8 +1033,9 @@ mod tests {
         let mut start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
         start.options.item_timeout = Duration::from_millis(150);
         let (a, b) = (RecSink::new(), RecSink::new());
-        hub.subscribe("studio", "w1", a.clone(), start.clone());
-        hub.subscribe("overlay-1", "w2", b.clone(), start);
+        hub.subscribe("studio", "w1", a.clone(), start.clone())
+            .unwrap();
+        hub.subscribe("overlay-1", "w2", b.clone(), start).unwrap();
         let retrying = |s: &RecSink| {
             s.log().into_iter().find_map(|r| match r {
                 Rec::Status(e) if e.state == StreamState::Retrying => Some(e),
@@ -1026,13 +1068,14 @@ mod tests {
         let hub = graceful_hub();
         let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
         let a = RecSink::new();
-        hub.subscribe("studio", "w1", a.clone(), start.clone());
+        hub.subscribe("studio", "w1", a.clone(), start.clone())
+            .unwrap();
         wait_for("live", || a.states().contains(&StreamState::Live)).await;
 
         hub.unsubscribe("studio", "w1");
         wait_for("the stop to begin", || stop_in_progress(&hub)).await;
         let b = RecSink::new();
-        hub.subscribe("studio", "w2", b.clone(), start);
+        hub.subscribe("studio", "w2", b.clone(), start).unwrap();
         wait_for("live again", || {
             b.media().iter().any(|m| m[0] == KIND_FRAME)
         })
@@ -1056,13 +1099,15 @@ mod tests {
         let hub = graceful_hub();
         let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
         let a = RecSink::new();
-        hub.subscribe("studio", "w1", a.clone(), start.clone());
+        hub.subscribe("studio", "w1", a.clone(), start.clone())
+            .unwrap();
         wait_for("live", || a.states().contains(&StreamState::Live)).await;
         hub.unsubscribe("studio", "w1");
         wait_for("the stop to begin", || stop_in_progress(&hub)).await;
 
         // A short-lived widget mounts and leaves again while the first stop is still running.
-        hub.subscribe("studio", "w2", RecSink::new(), start);
+        hub.subscribe("studio", "w2", RecSink::new(), start)
+            .unwrap();
         hub.unsubscribe("studio", "w2");
         wait_for("both stops done", || {
             idle_checks(&hub) == 2 && !stop_in_progress(&hub)
@@ -1076,12 +1121,119 @@ mod tests {
         wait_for("teardown", || fake.closed() == 1 && fake.teardowns() == 1).await;
     }
 
+    // --- caps and respawn floor ---
+
+    /// A start whose config is missing: the worker ends at once, no network involved.
+    fn unconfigured_start() -> Start {
+        Start {
+            load: Arc::new(|| Ok(None)),
+            shared: Arc::new(Shared::default()),
+            options: fast(),
+        }
+    }
+
+    fn sub(hub: &Arc<Hub<RecSink>>, label: &str, key: &str) -> Result<(), &'static str> {
+        hub.subscribe(label, key, RecSink::new(), unconfigured_start())
+    }
+
+    #[tokio::test]
+    async fn a_window_may_hold_eight_subscribers_and_the_ninth_is_refused() {
+        let hub = graceful_hub();
+        for i in 0..MAX_PER_WINDOW {
+            assert_eq!(sub(&hub, "overlay-1", &format!("k{i}")), Ok(()));
+        }
+        assert_eq!(
+            sub(&hub, "overlay-1", "extra"),
+            Err("too many camera subscribers")
+        );
+        assert_eq!(hub.subscriber_count(), MAX_PER_WINDOW);
+        // Replacing an existing key is not a new subscriber.
+        assert_eq!(sub(&hub, "overlay-1", "k0"), Ok(()));
+        // Another window has its own budget.
+        assert_eq!(sub(&hub, "overlay-2", "k0"), Ok(()));
+    }
+
+    #[tokio::test]
+    async fn the_total_cap_holds_across_windows() {
+        let hub = graceful_hub();
+        for window in ["overlay-1", "overlay-2"] {
+            for i in 0..MAX_PER_WINDOW {
+                assert_eq!(sub(&hub, window, &format!("k{i}")), Ok(()));
+            }
+        }
+        assert_eq!(hub.subscriber_count(), MAX_TOTAL);
+        assert_eq!(sub(&hub, "overlay-3", "k0"), Err(TOO_MANY));
+        assert_eq!(
+            sub(&hub, "overlay-1", "k0"),
+            Ok(()),
+            "a replace still works at the cap"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_freed_slot_can_be_reused() {
+        let hub = graceful_hub();
+        for i in 0..MAX_PER_WINDOW {
+            sub(&hub, "overlay-1", &format!("k{i}")).unwrap();
+        }
+        assert_eq!(sub(&hub, "overlay-1", "new"), Err(TOO_MANY));
+        hub.unsubscribe("overlay-1", "k3");
+        assert_eq!(sub(&hub, "overlay-1", "new"), Ok(()));
+        assert_eq!(sub(&hub, "overlay-1", "again"), Err(TOO_MANY));
+        hub.forget_window("overlay-1");
+        assert_eq!(hub.subscriber_count(), 0);
+        for i in 0..MAX_PER_WINDOW {
+            assert_eq!(sub(&hub, "overlay-1", &format!("n{i}")), Ok(()));
+        }
+    }
+
+    #[tokio::test]
+    async fn an_ended_worker_is_not_respawned_inside_the_floor() {
+        let fake = FakeRtsp::start(FakeOptions {
+            encoding: "H265", // terminal: unsupportedCodec, the worker ends by itself
+            ..FakeOptions::default()
+        })
+        .await;
+        let floor = Duration::from_millis(300);
+        let hub = Arc::new(Hub::<RecSink>::with_floor(TEST_GRACE, floor));
+        let shared = Arc::new(Shared::default());
+        let start = start_with(config_for(&fake, fake_rtsp::PASS), &shared);
+        let a = RecSink::new();
+        hub.subscribe("studio", "w1", a.clone(), start.clone())
+            .unwrap();
+        wait_for("the worker to end", || {
+            hub.lock()
+                .worker
+                .as_ref()
+                .is_some_and(|w| w.handle.ended_ago().is_some())
+        })
+        .await;
+        assert_eq!(fake.accepts(), 1);
+
+        // Remounting right away: attached to the ended worker, no new DESCRIBE.
+        let b = RecSink::new();
+        hub.subscribe("studio", "w2", b.clone(), start.clone())
+            .unwrap();
+        assert_eq!(fake.accepts(), 1, "inside the floor nothing is respawned");
+        assert!(
+            b.log().iter().any(|r| matches!(r,
+                Rec::Status(e) if e.state == StreamState::UnsupportedCodec)),
+            "the late subscriber still learns the terminal state"
+        );
+
+        // Past the floor a subscribe is the owner asking again (positive control).
+        tokio::time::sleep(floor + Duration::from_millis(50)).await;
+        hub.subscribe("studio", "w3", RecSink::new(), start)
+            .unwrap();
+        wait_for("the respawn", || fake.accepts() == 2).await;
+    }
+
     /// Subscribes one widget to a live fake camera and waits for CONFIG + keyframe + 3 deltas.
     async fn live_subscriber(hub: &Arc<Hub<RecSink>>, fake: &FakeRtsp) -> RecSink {
         let shared = Arc::new(Shared::default());
         let start = start_with(config_for(fake, fake_rtsp::PASS), &shared);
         let a = RecSink::new();
-        hub.subscribe("studio", "w1", a.clone(), start);
+        hub.subscribe("studio", "w1", a.clone(), start).unwrap();
         wait_for("the first frames", || a.media().len() >= 5).await;
         a
     }

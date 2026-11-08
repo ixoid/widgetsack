@@ -146,16 +146,19 @@ pub async fn camera_subscribe<R: Runtime>(
     let state = app.state::<CameraState>();
     let status = with_lockout(config::to_status(cfg.as_ref()), state.shared());
     drop(cfg);
-    state.hub.subscribe(
-        window.label(),
-        &key,
-        channel,
-        Start {
-            load: file_loader(app.clone()),
-            shared: Arc::clone(state.shared()),
-            options: WorkerOptions::default(),
-        },
-    );
+    state
+        .hub
+        .subscribe(
+            window.label(),
+            &key,
+            channel,
+            Start {
+                load: file_loader(app.clone()),
+                shared: Arc::clone(state.shared()),
+                options: WorkerOptions::default(),
+            },
+        )
+        .map_err(str::to_owned)?;
     Ok(status)
 }
 

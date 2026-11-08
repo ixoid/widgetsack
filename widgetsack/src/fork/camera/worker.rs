@@ -87,6 +87,8 @@ impl Default for WorkerOptions {
 pub struct WorkerHandle {
     shutdown: watch::Sender<bool>,
     join: JoinHandle<()>,
+    /// Set by the task as its last act; lets the registry pace respawns after a terminal end.
+    ended_at: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
 }
 
 impl WorkerHandle {
@@ -113,22 +115,37 @@ impl WorkerHandle {
         after: Option<watch::Receiver<bool>>,
     ) -> Self {
         let (shutdown, mut rx) = watch::channel(false);
+        let ended_at = Arc::new(std::sync::Mutex::new(None));
+        let ended = Arc::clone(&ended_at);
         let join = tokio::spawn(async move {
+            let stamp = || {
+                *ended.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::time::Instant::now());
+            };
             if let Some(after) = after {
                 tokio::select! {
                     biased;
-                    () = wait_shutdown(&mut rx) => return,
+                    () = wait_shutdown(&mut rx) => return stamp(),
                     () = wait_stopped(after) => {}
                 }
             }
             run(sink, load, shared, options, rx).await;
+            stamp();
         });
-        Self { shutdown, join }
+        Self {
+            shutdown,
+            join,
+            ended_at,
+        }
     }
 
-    /// The task ended by itself (terminal state: auth failure, unsupported codec, no config).
-    pub fn is_finished(&self) -> bool {
-        self.join.is_finished()
+    /// How long ago a finished task ended (`None` while it still runs).
+    pub fn ended_ago(&self) -> Option<Duration> {
+        if !self.join.is_finished() {
+            return None;
+        }
+        let at = *self.ended_at.lock().unwrap_or_else(|e| e.into_inner());
+        // Finished but not stamped (aborted task): treat as ended long ago, never as a block.
+        Some(at.map_or(Duration::MAX, |t| t.elapsed()))
     }
 
     /// Cooperative stop: the task drops its session (TEARDOWN) itself; abort only if it hangs.
@@ -447,8 +464,11 @@ async fn pump<S: Sink>(
     let mut configured = false;
     let mut seen_key = false;
     let mut live_since: Option<tokio::time::Instant> = None;
+    // The stall window runs from the last video frame of OUR stream, not from any item: a camera
+    // whose encoder hung can keep answering with RTCP sender reports, which must not look alive.
+    let mut last_video = tokio::time::Instant::now();
     loop {
-        let item = match tokio::time::timeout(item_timeout, demuxed.next()).await {
+        let item = match tokio::time::timeout_at(last_video + item_timeout, demuxed.next()).await {
             Ok(Some(Ok(item))) => item,
             // Stall, end of stream or a broken stream: all "lost" (error text is never inspected).
             _ => {
@@ -465,6 +485,7 @@ async fn pump<S: Sink>(
         if frame.stream_id() != stream_i {
             continue;
         }
+        last_video = tokio::time::Instant::now();
         let mut codec = None;
         if !configured || frame.has_new_parameters() {
             let Some(ParametersRef::Video(params)) = demuxed.streams()[stream_i].parameters()
@@ -669,6 +690,45 @@ mod tests {
             vec![StreamState::Connecting, StreamState::Live]
         );
         assert_eq!(fake.accepts(), 1);
+    }
+
+    #[tokio::test]
+    async fn rtcp_alone_does_not_keep_a_hung_stream_alive() {
+        // The camera sends 4 frames, then only sender reports every 50 ms: the old per-item
+        // timeout was reset by each one and never fired. 250 ms without VIDEO must end the session.
+        let fake = FakeRtsp::start(FakeOptions {
+            rtcp_interval: Duration::from_millis(50),
+            ..FakeOptions::default()
+        })
+        .await;
+        let sink = VecSink::default();
+        let mut options = fast();
+        options.item_timeout = Duration::from_millis(250);
+        let handle = WorkerHandle::spawn(
+            sink.clone(),
+            loader(config_for(&fake.url(), fake_rtsp::USER, fake_rtsp::PASS)),
+            Arc::new(Shared::default()),
+            options,
+        );
+        let lost = |s: &VecSink| {
+            s.snapshot().into_iter().any(|m| {
+                matches!(m, Msg::Status(e)
+                    if e.state == StreamState::Retrying && e.error == Some(CameraErrorKind::StreamLost))
+            })
+        };
+        sink.wait_until(lost).await;
+        // Detected WHILE reports were still arriving. With the old per-item timeout every report
+        // reset it, so the loss only showed after the burst had ended.
+        assert!(
+            fake.rtcp_sent() < fake_rtsp::RTCP_BURST,
+            "{}",
+            fake.rtcp_sent()
+        );
+        // The retry opens a second session (it reconnects, not just reports).
+        sink.wait_until(|s| s.media().iter().filter(|m| m[0] == KIND_CONFIG).count() >= 2)
+            .await;
+        handle.stop().await;
+        assert!(fake.accepts() >= 2);
     }
 
     #[tokio::test]

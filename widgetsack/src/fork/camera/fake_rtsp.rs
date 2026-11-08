@@ -19,6 +19,9 @@ pub const SPROP: &str = "Z00AKp2oHgCJ+WbgICAoAAADAAgAAAMAfCA=,aO48gA==";
 pub const TS_STEP: u32 = 3_000;
 const RTP_TS_BASE: u32 = 1_000;
 const SSRC: u32 = 0x1234_5678;
+/// Bounds the RTCP-only phase: the server reads no requests meanwhile, so a longer burst would delay
+/// the TEARDOWN answer of a test that stops the worker.
+pub const RTCP_BURST: usize = 8;
 
 #[derive(Clone, Debug)]
 pub struct FakeOptions {
@@ -38,6 +41,9 @@ pub struct FakeOptions {
     /// How long a dropped connection (see `drop_connections`) stays open after the frames, i.e. how
     /// long the stream was "live" before it died.
     pub drop_after: Duration,
+    /// After the frames, send an RTCP sender report this often (up to `RTCP_BURST` of them) and
+    /// nothing else: an encoder that hung while the RTSP server stays alive. Zero = off.
+    pub rtcp_interval: Duration,
 }
 
 impl Default for FakeOptions {
@@ -50,6 +56,7 @@ impl Default for FakeOptions {
             leading_delta: false,
             teardown_delay: Duration::ZERO,
             drop_after: Duration::ZERO,
+            rtcp_interval: Duration::ZERO,
         }
     }
 }
@@ -63,6 +70,8 @@ pub struct FakeRtsp {
     /// Connections the CLIENT closed (the server read hit EOF), i.e. the session was dropped.
     closed: Arc<AtomicUsize>,
     teardowns: Arc<AtomicUsize>,
+    /// Sender reports written so far, across connections.
+    rtcp_sent: Arc<AtomicUsize>,
     task: JoinHandle<()>,
 }
 
@@ -74,6 +83,8 @@ impl FakeRtsp {
         let counter = Arc::clone(&accepts);
         let closed = Arc::new(AtomicUsize::new(0));
         let teardowns = Arc::new(AtomicUsize::new(0));
+        let rtcp_sent = Arc::new(AtomicUsize::new(0));
+        let rtcp_counter = Arc::clone(&rtcp_sent);
         let counters = (Arc::clone(&closed), Arc::clone(&teardowns));
         let options = Arc::new(options);
         let replied = Arc::new(AtomicUsize::new(0));
@@ -93,6 +104,7 @@ impl FakeRtsp {
                     closed: Arc::clone(&counters.0),
                     teardowns: Arc::clone(&counters.1),
                     replied: Arc::clone(&accept_replied),
+                    rtcp_sent: Arc::clone(&rtcp_counter),
                 };
                 tokio::spawn(serve(sock, serving));
             }
@@ -103,6 +115,7 @@ impl FakeRtsp {
             replied_at_accept,
             closed,
             teardowns,
+            rtcp_sent,
             task,
         }
     }
@@ -122,6 +135,10 @@ impl FakeRtsp {
 
     pub fn closed(&self) -> usize {
         self.closed.load(Ordering::SeqCst)
+    }
+
+    pub fn rtcp_sent(&self) -> usize {
+        self.rtcp_sent.load(Ordering::SeqCst)
     }
 
     pub fn teardowns(&self) -> usize {
@@ -238,6 +255,19 @@ fn rtp_packet(seq: u16, ts: u32, nal: &[u8]) -> Vec<u8> {
     out
 }
 
+/// One interleaved RTCP sender report (channel 1) with no report blocks.
+fn rtcp_sender_report() -> Vec<u8> {
+    let mut sr = vec![0x80, 200, 0x00, 0x06];
+    sr.extend_from_slice(&SSRC.to_be_bytes());
+    sr.extend_from_slice(&[0xE8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // NTP
+    sr.extend_from_slice(&RTP_TS_BASE.to_be_bytes());
+    sr.extend_from_slice(&[0, 0, 0, 1, 0, 0, 0, 1]); // packet and octet counts
+    let mut out = vec![b'$', 1];
+    out.extend_from_slice(&(sr.len() as u16).to_be_bytes());
+    out.extend_from_slice(&sr);
+    out
+}
+
 /// The NAL payloads in send order: IDR (type 5) then `deltas` P-slices (type 1). No payload ends in
 /// a zero byte: retina trims trailing zeros (they are not part of the NAL).
 pub fn access_units(deltas: usize) -> Vec<Vec<u8>> {
@@ -277,6 +307,7 @@ struct Serving {
     closed: Arc<AtomicUsize>,
     teardowns: Arc<AtomicUsize>,
     replied: Arc<AtomicUsize>,
+    rtcp_sent: Arc<AtomicUsize>,
 }
 
 /// Counts the connection as closed however `serve` returns (EOF, write error, deliberate drop).
@@ -296,6 +327,7 @@ async fn serve(mut sock: TcpStream, serving: Serving) {
         closed,
         teardowns,
         replied,
+        rtcp_sent,
     } = serving;
     let _closed = ClosedOnDrop(closed);
     let mut buf = Vec::new();
@@ -344,6 +376,15 @@ async fn serve(mut sock: TcpStream, serving: Serving) {
                 }
                 if sock.write_all(&out).await.is_err() {
                     return;
+                }
+                if !options.rtcp_interval.is_zero() {
+                    for _ in 0..RTCP_BURST {
+                        tokio::time::sleep(options.rtcp_interval).await;
+                        if sock.write_all(&rtcp_sender_report()).await.is_err() {
+                            return;
+                        }
+                        rtcp_sent.fetch_add(1, Ordering::SeqCst);
+                    }
                 }
                 if index < options.drop_connections {
                     tokio::time::sleep(options.drop_after).await;
