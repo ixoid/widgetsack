@@ -84,7 +84,7 @@ Key invariants:
 - [x] Этап 1: server check — в `main` (merge f53c9f5, 2026-11-07, ADR-002); осталась проверка владельцем на живом оверлее с тремя реальными целями и карточка в раскладке
 - [x] Этап 2: camera — в `main` (merge 6f29604, 2026-11-08, ADR-005): нативный RTSP через `retina` → `Channel` → WebCodecs, без go2rtc и без правки CSP; креды только в `secure_config`; живая картинка проверена в Studio (спайк), на оверлее под VPN владельца штатно «No signal, retrying»
 - [x] Этап 3: calendar / agenda — стоковый Agenda на ICS работает, K-1 `agendaplus` (группы + обратный отсчёт) в `main` 73a4247, виден на dev-оверлее (2026-11-07). CalDAV вне scope.
-- [ ] Этап 4: упаковка, автозапуск, `config.example.*`, `README-fork.md`
+- [x] Этап 4: упаковка — `scripts/release-fork.ps1` → `dist/widgetsack_0.0.71_fork-<дата>-<sha>-x64-setup.exe` (первый боевой инсталлер 2026-11-08, тег `fork-release-20261108`); автозапуск — апстримный тумблер Settings/галочка инсталлера; `README-fork.md` и `docs/DEPLOYMENT.md` написаны; `config.example.*` заменён на `examples/layouts/own-desktop.widgets.json` (секреты примерами не бывают, вводятся в Studio)
 
 ---
 
