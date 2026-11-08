@@ -1,0 +1,11 @@
+# Golden vectors for the camera stream framing (widgetsack/src/fork/camera/framing.rs).
+# Asserted byte-for-byte by the Rust tests and by client camera-protocol.test.ts. Little-endian.
+# Format: name=hex (lowercase, no spaces). Lines starting with # are comments.
+#
+# config      : seq 0, width 1920, height 1080, codec "avc1.4d002a" (11 bytes),
+#               avcC 014d002affe10004674d002a01000268ee (17 bytes: SPS 674d002a, PPS 68ee)
+# frame_key   : seq 0, keyframe, ts_us 1000000 (90000 ticks @ 90 kHz), data 00000003658884
+# frame_delta : seq 1, delta, ts_us 1033366 (93003 ticks @ 90 kHz, floor), data 00000002419a
+config=0100000000000000800738040b617663312e346430303261014d002affe10004674d002a01000268ee
+frame_key=020100000000000040420f000000000000000003658884
+frame_delta=020000000100000096c40f000000000000000002419a

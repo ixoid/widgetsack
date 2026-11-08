@@ -1,14 +1,15 @@
 //! Maps a failed RTSP step to a `CameraErrorKind` by PHASE and STATUS CODE only. retina's error
 //! text carries connection context (addresses) and must never be inspected, logged or forwarded.
 
-// Consumed by the RTSP worker and probe (next batch); kept here so the table is tested first.
-#![allow(dead_code)]
-
 use super::types::CameraErrorKind;
 
 /// Which step of the RTSP session failed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
+    #[allow(
+        dead_code,
+        reason = "retina's describe() connects and describes in one call; kept for a future transport"
+    )]
     Connect,
     Describe,
     Setup,

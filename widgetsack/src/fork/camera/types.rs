@@ -2,9 +2,6 @@
 //! client — change both sides in one commit). Nothing here may hold a `config::Secret`, a username
 //! value or a full URL: the webview learns host/port/path and booleans only.
 
-// Probe/event shapes and some states are produced by the RTSP worker and probe (next batch).
-#![allow(dead_code)]
-
 use serde::Serialize;
 
 /// Coarse failure class shown to the user. Derived from phase + status code, never from error text,
