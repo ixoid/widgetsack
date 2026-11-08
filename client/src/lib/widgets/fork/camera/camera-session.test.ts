@@ -52,6 +52,8 @@ function fakes(subscribeState: CameraStatus['state'] = 'connecting') {
 		configure: vi.fn(async () => undefined),
 		push: vi.fn(),
 		close: vi.fn(),
+		available: vi.fn(() => true),
+		cooling: vi.fn(() => false),
 		counters: () => ({ drawn: 0, superseded: 1, dropped: 2 })
 	};
 	let problem: (p: DecoderProblem) => void = () => undefined;
@@ -240,12 +242,76 @@ describe('camera session', () => {
 		}
 	});
 
-	it('shows no signal for any other subscribe failure', async () => {
+	it('shows unavailable (terminal, no retry) for any other subscribe failure', async () => {
+		for (const rejection of [
+			'camera config could not be read',
+			new Error('camera config is corrupt'),
+			'camera stream key must be 1-64 letters'
+		]) {
+			const f = fakes();
+			vi.mocked(f.deps.subscribe).mockRejectedValueOnce(rejection);
+			const stop = startCameraSession('k', canvas, f.onView, f.deps);
+			await flush();
+			expect(f.views).toEqual(['unavailable']);
+			vi.advanceTimersByTime(60_000);
+			expect(f.deps.subscribe).toHaveBeenCalledTimes(1);
+			stop();
+		}
+	});
+
+	it('does not subscribe at all when the browser has no VideoDecoder', async () => {
 		const f = fakes();
-		vi.mocked(f.deps.subscribe).mockRejectedValueOnce('camera stream key must be 1-64 letters');
+		vi.mocked(f.decoder.available).mockReturnValue(false);
 		const stop = startCameraSession('k', canvas, f.onView, f.deps);
 		await flush();
-		expect(f.views).toEqual(['noSignal']);
+		expect(f.deps.subscribe).not.toHaveBeenCalled();
+		expect(f.views).toEqual(['decoderUnavailable']);
+		stop();
+		await flush();
+		expect(f.order).toEqual([]); // no unsubscribe for a subscription that never was
+	});
+
+	it('hands the codec name to the view for an unsupported codec', async () => {
+		const f = fakes();
+		const seen: (string | undefined)[] = [];
+		const stop = startCameraSession('k', canvas, (v, c) => seen.push(v + ':' + c), f.deps);
+		await flush();
+		f.channels[0].onmessage({ kind: 'status', state: 'unsupportedCodec', codec: 'H265' });
+		expect(seen).toEqual(['unsupportedCodec:H265']);
+		stop();
+	});
+
+	it('stops acking while the decoder is cooling down and resumes after', async () => {
+		const f = fakes();
+		const stop = startCameraSession('cam-a', canvas, f.onView, f.deps);
+		await flush();
+		const ch = f.channels[0];
+		vi.mocked(f.decoder.cooling).mockReturnValue(true);
+		ch.onmessage(frameBuf(1, true));
+		expect(f.acks).toEqual([]);
+		vi.mocked(f.decoder.cooling).mockReturnValue(false);
+		ch.onmessage(frameBuf(2, true));
+		expect(f.acks).toEqual([['cam-a', 2]]);
+		stop();
+	});
+
+	it('a Studio save that restarts the worker replaces the credentials hint', async () => {
+		const f = fakes();
+		vi.mocked(f.deps.subscribe).mockResolvedValueOnce({
+			...STATUS,
+			configured: true,
+			credentialsSet: false,
+			state: 'connecting'
+		});
+		const stop = startCameraSession('k', canvas, f.onView, f.deps);
+		await flush();
+		const ch = f.channels[0];
+		ch.onmessage({ kind: 'status', state: 'authFailed' });
+		expect(f.views.at(-1)).toBe('credentialsMissing');
+		ch.onmessage({ kind: 'status', state: 'connecting' }); // restart after the save
+		expect(f.views.at(-1)).toBe('connecting');
+		ch.onmessage({ kind: 'status', state: 'authFailed' });
+		expect(f.views.at(-1)).toBe('authFailed');
 		stop();
 	});
 
@@ -314,7 +380,7 @@ describe('acks', () => {
 		expect(f.acks.at(-1)).toEqual(['cam-a', 8]); // 8 frames after the keyframe
 		ch.onmessage(frameBuf(9, true)); // mid-GOP keyframe
 		expect(f.acks.at(-1)).toEqual(['cam-a', 9]);
-		ch.onmessage(CONFIG); // a reconnect restarts seq near 0: acks follow the new numbers
+		ch.onmessage(CONFIG); // seq may jump or continue across a CONFIG: acks echo whatever came
 		ch.onmessage(frameBuf(0, true));
 		expect(f.acks.at(-1)).toEqual(['cam-a', 0]);
 		stop();

@@ -3,6 +3,7 @@ import {
 	browserDeps,
 	createCameraDecoder,
 	createErrorBurst,
+	COOLDOWN_MS,
 	QUEUE_LIMIT,
 	clearCanvas,
 	type CanvasLike,
@@ -271,6 +272,45 @@ describe('camera decoder', () => {
 		t.decoders[2].error(new Error('x'));
 		expect(t.problems).toEqual(['decodeError']);
 		expect(t.decoders).toHaveLength(3);
+	});
+
+	it('after a burst: stays off, then a keyframe 10 s later rebuilds it from the last CONFIG', async () => {
+		const t = setup();
+		await t.dec.configure(CONFIG);
+		t.decoders[0].error(new Error('x'));
+		t.decoders[1].error(new Error('x'));
+		t.decoders[2].error(new Error('x')); // third inside 10 s: burst
+		expect(t.problems).toEqual(['decodeError']);
+		expect(t.dec.cooling()).toBe(true);
+		expect(t.decoders).toHaveLength(3);
+		const dropped = t.dec.counters().dropped;
+		t.dec.push(frame(1, true)); // a keyframe inside the cool-down is not enough
+		t.tick(COOLDOWN_MS - 1);
+		t.dec.push(frame(2, true));
+		t.tick(1);
+		t.dec.push(frame(3, false)); // after the cool-down a delta is not enough either
+		expect(t.dec.counters().dropped).toBe(dropped + 3);
+		expect(t.dec.cooling()).toBe(true);
+		expect(t.decoders).toHaveLength(3);
+		t.dec.push(frame(4, true));
+		expect(t.dec.cooling()).toBe(false);
+		expect(t.decoders).toHaveLength(4);
+		expect(t.decoders[3].cfg?.codec).toBe('avc1.4d002a');
+		expect(t.decoders[3].chunks).toHaveLength(1); // the keyframe went into the new decoder
+	});
+
+	it('a new CONFIG ends the cool-down at once', async () => {
+		const t = setup();
+		await t.dec.configure(CONFIG);
+		for (let i = 0; i < 3; i++) t.decoders.at(-1)?.error(new Error('x'));
+		expect(t.dec.cooling()).toBe(true);
+		await t.dec.configure(CONFIG);
+		expect(t.dec.cooling()).toBe(false);
+	});
+
+	it('reports whether the browser can decode at all', () => {
+		expect(setup().dec.available()).toBe(true);
+		expect(setup(true, false).dec.available()).toBe(false);
 	});
 
 	it('ignores errors after close', async () => {

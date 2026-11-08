@@ -7,7 +7,10 @@
 	height: 100%;
 	box-sizing: border-box;
 	overflow: hidden;
-	/* a video stage is black whatever the theme */
+	/* A video stage is black whatever the theme, so the state text is a fixed light colour paired
+	   with it: --np-muted is dark on light themes and would vanish on the black. The caption has
+	   its own themed background and stays on tokens. */
+	--cam-stage-fg: rgba(255, 255, 255, 0.7);
 	background: #000;
 	font-family: var(--np-font-display, 'Bahnschrift', 'Arial Narrow', sans-serif);
 	color: var(--np-fg, rgb(255, 255, 255));
@@ -39,7 +42,7 @@
 	line-height: var(--np-line-body, 20px);
 	text-wrap: balance;
 	overflow-wrap: anywhere;
-	color: var(--np-muted, rgba(255, 255, 255, 0.6));
+	color: var(--cam-stage-fg);
 }
 .cam-caption {
 	position: absolute;

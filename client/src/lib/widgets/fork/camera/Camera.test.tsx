@@ -4,12 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CameraView } from './camera-model';
 
 let view: CameraView = 'connecting';
+let codec: string | undefined;
 const seen: { key?: string; ref?: unknown } = {};
 vi.mock('./useCameraStream', () => ({
 	useCameraStream: (ref: unknown, key: string) => {
 		seen.ref = ref;
 		seen.key = key;
-		return view;
+		return { view, codec };
 	}
 }));
 
@@ -17,6 +18,7 @@ import Camera from './Camera';
 
 beforeEach(() => {
 	view = 'connecting';
+	codec = undefined;
 });
 
 // Literal copy for every state (not VIEW_TEXT itself), so a wrong string fails here.
@@ -34,7 +36,8 @@ const EXPECTED: Record<CameraView, string> = {
 	credentialsMissing: 'Login or password not set. Enter them in Plugins → Camera.',
 	decoderUnavailable: 'Video decoder unavailable',
 	decodeError: 'Decode error',
-	refused: 'Save the layout in Studio'
+	refused: 'Save the layout in Studio',
+	unavailable: 'Camera unavailable — check Plugins → Camera'
 };
 
 describe('Camera widget', () => {
@@ -60,21 +63,33 @@ describe('Camera widget', () => {
 		expect(stage?.getAttribute('data-view')).toBe('connecting');
 	});
 
-	it('ships the CSS rule that hides the canvas whenever the view is not live', () => {
-		// vitest runs from client/; CSS imports are stubbed to '' so read the file itself
+	// The one test that reads Camera.css: happy-dom applies no stylesheet (CSS imports are stubbed),
+	// so a rule can only be proven from the file. Everything else here is behaviour.
+	it('ships the CSS rules: hidden canvas unless live, no dimming, a fixed stage text colour', () => {
 		const css = readFileSync('src/lib/widgets/fork/camera/Camera.css', 'utf8');
 		expect(css).toMatch(
 			/\.cam:not\(\[data-view='live'\]\) \.cam-canvas\s*\{\s*visibility:\s*hidden;/
 		);
-	});
-
-	it('keeps the stage plain black while waiting: no dimming filter, no stale-frame class', () => {
-		const css = readFileSync('src/lib/widgets/fork/camera/Camera.css', 'utf8');
 		expect(css).not.toMatch(/filter\s*:/);
 		expect(css).not.toMatch(/opacity\s*:/);
+		expect(css).toMatch(/\.cam\s*\{[^}]*--cam-stage-fg:\s*rgba\(255, 255, 255, 0\.7\);/);
+		expect(css).toMatch(/\.cam-state\s*\{[^}]*color:\s*var\(--cam-stage-fg\);/);
+		expect(css).not.toMatch(/\.cam-state\s*\{[^}]*--np-muted/);
+	});
+
+	it('a waiting view leaves no stale-frame class on the stage', () => {
 		view = 'noSignal';
 		const { container } = render(<Camera />);
 		expect(container.querySelector('.cam')?.className).toBe('cam');
+	});
+
+	it('names the codec in the unsupported-codec text when the hook knows it', () => {
+		view = 'unsupportedCodec';
+		codec = 'H265';
+		render(<Camera />);
+		expect(screen.getByRole('status').textContent).toBe(
+			'Unsupported codec (H265): the camera must send H.264. Change the stream in Plugins → Camera.'
+		);
 	});
 
 	it('shows no text when live, and hides the text when showState is off', () => {

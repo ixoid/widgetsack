@@ -15,6 +15,7 @@ import {
 } from './camera-decoder';
 import { publishDiagnostics } from './camera-diagnostics';
 import {
+	codecOf,
 	initialModel,
 	isRefusedError,
 	reduce,
@@ -26,6 +27,9 @@ import {
 import { isStatusMsg, parseMessage } from './camera-protocol';
 import { createCameraStats } from './camera-stats';
 import type { CameraStatus } from './camera-types';
+
+/** The view to show; `codec` is the name for the unsupported-codec text when known. */
+export type ViewListener = (v: CameraView, codec?: string) => void;
 
 export const HIDE_DEBOUNCE_MS = 1500;
 export const STATS_INTERVAL_MS = 1000;
@@ -70,7 +74,7 @@ function enqueue<T>(key: string, work: () => Promise<T>): Promise<T> {
 export function startCameraSession(
 	key: string,
 	canvas: CanvasLike,
-	onView: (v: CameraView) => void,
+	onView: ViewListener,
 	deps: SessionDeps = defaultSessionDeps
 ): () => void {
 	let stopped = false;
@@ -87,7 +91,7 @@ export function startCameraSession(
 		shown = v;
 		// Only live may leave pixels on screen: a later show starts black, not on a stale frame.
 		if (v !== 'live') clearCanvas(canvas);
-		onView(v);
+		onView(v, codecOf(model) ?? undefined);
 	};
 	const release = () => {
 		if (unsubscribed) return;
@@ -115,7 +119,7 @@ export function startCameraSession(
 			}
 			if (parsed.kind === 'config') {
 				stats.config(parsed.codec, parsed.width, parsed.height);
-				dispatch({ type: 'config' });
+				dispatch({ type: 'config', codec: parsed.codec });
 				decoder.configure(parsed).catch(() => onProblem('unsupportedCodec'));
 			} else {
 				stats.frame({
@@ -126,7 +130,9 @@ export function startCameraSession(
 				});
 				dispatch({ type: 'frame', keyframe: parsed.keyframe });
 				decoder.push(parsed);
-				if (shouldAck(parsed.keyframe)) deps.ack(key, parsed.seq).catch(() => undefined);
+				// no acks while the decoder is off after an error burst: the backend must see us idle
+				if (!decoder.cooling() && shouldAck(parsed.keyframe))
+					deps.ack(key, parsed.seq).catch(() => undefined);
 			}
 		} else if (isStatusMsg(msg)) {
 			dispatch({ type: 'status', msg });
@@ -140,6 +146,12 @@ export function startCameraSession(
 
 	void enqueue(key, async () => {
 		if (stopped) return;
+		if (!decoder.available()) {
+			// nothing to subscribe for: the backend would stream into a browser that cannot decode
+			unsubscribed = true;
+			dispatch({ type: 'problem', problem: 'decoderUnavailable' });
+			return;
+		}
 		const status = await deps.subscribe(channel, key);
 		dispatch({ type: 'subscribed', status });
 	}).catch((e: unknown) => dispatch({ type: 'subscribeFailed', refused: isRefusedError(e) }));
@@ -158,7 +170,7 @@ export function startCameraSession(
 export function runCameraStream(
 	key: string,
 	canvas: CanvasLike,
-	onView: (v: CameraView) => void,
+	onView: ViewListener,
 	deps: SessionDeps = defaultSessionDeps
 ): () => void {
 	let stop: (() => void) | null = startCameraSession(key, canvas, onView, deps);

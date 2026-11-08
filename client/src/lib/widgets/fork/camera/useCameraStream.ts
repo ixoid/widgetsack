@@ -3,17 +3,21 @@ import { useEffect, useState, type RefObject } from 'react';
 import { defaultSessionDeps, runCameraStream, type SessionDeps } from './camera-session';
 import type { CameraView } from './camera-model';
 
+export type CameraState = { view: CameraView; codec?: string };
+
+const CONNECTING: CameraState = { view: 'connecting' };
+
 export function useCameraStream(
 	canvasRef: RefObject<HTMLCanvasElement | null>,
 	key: string,
 	deps: SessionDeps = defaultSessionDeps
-): CameraView {
-	const [view, setView] = useState<CameraView>('connecting');
+): CameraState {
+	const [state, setState] = useState<CameraState>(CONNECTING);
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		if (!canvas) return;
-		setView('connecting');
-		return runCameraStream(key, canvas, setView, deps);
+		setState(CONNECTING);
+		return runCameraStream(key, canvas, (view, codec) => setState({ view, codec }), deps);
 	}, [canvasRef, key, deps]);
-	return view;
+	return state;
 }

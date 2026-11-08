@@ -92,7 +92,7 @@ function rig() {
 
 function Probe({ deps, id = 'k' }: { deps: SessionDeps; id?: string }) {
 	const ref = useRef<HTMLCanvasElement>(null);
-	const view = useCameraStream(ref, id, deps);
+	const { view } = useCameraStream(ref, id, deps);
 	return (
 		<>
 			<canvas ref={ref} />
@@ -210,7 +210,7 @@ describe('useCameraStream', () => {
 	it('does nothing without a mounted canvas', () => {
 		const r = rig();
 		const { result } = renderHook(() => useCameraStream({ current: null }, 'k', r.deps));
-		expect(result.current).toBe('connecting');
+		expect(result.current.view).toBe('connecting');
 		expect(r.deps.subscribe).not.toHaveBeenCalled();
 	});
 });

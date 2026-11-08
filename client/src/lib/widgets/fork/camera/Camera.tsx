@@ -19,8 +19,8 @@ const keyOf = (id: string) => `cam-${id.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 export default function Camera({ fit = 'contain', caption = '', showState = true }: Props) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const key = keyOf(useId());
-	const view = useCameraStream(canvasRef, key);
-	const text = stateText(view);
+	const { view, codec } = useCameraStream(canvasRef, key);
+	const text = stateText(view, codec ?? null);
 	return (
 		<div className="cam" data-view={view}>
 			<canvas ref={canvasRef} className={`cam-canvas cam-fit-${fit}`} />

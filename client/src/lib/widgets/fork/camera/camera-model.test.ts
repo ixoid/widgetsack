@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	codecOf,
 	initialModel,
 	isRefusedError,
 	reduce,
@@ -24,7 +25,35 @@ const view = (steps: Step[], start = 0): CameraView => viewOf(run(steps, start))
 const status = (state: CameraWireState, extra: { error?: string; retryInMs?: number } = {}) =>
 	({ type: 'status', msg: { kind: 'status', state, ...extra } }) as const;
 const subscribed = (state: CameraWireState, configured = true, credentialsSet = true) =>
-	({ type: 'subscribed', status: { state, configured, credentialsSet } }) as const;
+	({ type: 'subscribed', status: { state, configured, credentialsSet, codec: null } }) as const;
+
+describe('unsupported codec text', () => {
+	it('names the codec when it is known, from the wire or from CONFIG', () => {
+		expect(stateText('unsupportedCodec', 'H265')).toBe(
+			'Unsupported codec (H265): the camera must send H.264. Change the stream in Plugins → Camera.'
+		);
+		const wire = run([
+			[{ type: 'status', msg: { kind: 'status', state: 'unsupportedCodec', codec: 'H265' } }, 1]
+		]);
+		expect(codecOf(wire)).toBe('H265');
+		const sub = reduce(
+			initialModel(0),
+			{
+				type: 'subscribed',
+				status: { state: 'idle', configured: true, credentialsSet: true, codec: 'H264' }
+			},
+			1
+		);
+		expect(codecOf(sub)).toBe('H264');
+		expect(codecOf(run([[{ type: 'config', codec: 'hvc1.1.6.L93' }, 1]]))).toBe('hvc1.1.6.L93');
+	});
+
+	it('falls back to the plain text without a codec', () => {
+		expect(stateText('unsupportedCodec')).toBe(VIEW_TEXT.unsupportedCodec);
+		expect(stateText('unsupportedCodec', null)).toBe(VIEW_TEXT.unsupportedCodec);
+		expect(stateText('noSignal', 'H265')).toBe('No signal, retrying');
+	});
+});
 
 describe('copy', () => {
 	// Literal strings for every state: a wrong word fails here, not through VIEW_TEXT itself.
@@ -42,7 +71,8 @@ describe('copy', () => {
 		credentialsMissing: 'Login or password not set. Enter them in Plugins → Camera.',
 		decoderUnavailable: 'Video decoder unavailable',
 		decodeError: 'Decode error',
-		refused: 'Save the layout in Studio'
+		refused: 'Save the layout in Studio',
+		unavailable: 'Camera unavailable — check Plugins → Camera'
 	};
 
 	it.each(Object.entries(EXPECTED))('%s has its literal text', (v, text) => {
@@ -140,7 +170,53 @@ describe('transitions', () => {
 		['parked notFound', [[status('retrying', { error: 'notFound' }), 1]], 'notFound'],
 		['parked protocol', [[status('retrying', { error: 'protocol' }), 1]], 'protocolError'],
 		['refused subscribe', [[{ type: 'subscribeFailed', refused: true }, 1]], 'refused'],
-		['other subscribe failure', [[{ type: 'subscribeFailed', refused: false }, 1]], 'noSignal'],
+		['other subscribe failure', [[{ type: 'subscribeFailed', refused: false }, 1]], 'unavailable'],
+		[
+			'credentials hint: connecting then authFailed keeps it',
+			[
+				[subscribed('connecting', true, false), 1],
+				[status('connecting'), 2],
+				[status('authFailed'), 3]
+			],
+			'credentialsMissing'
+		],
+		[
+			'credentials hint: a restart after the failure (Studio save) drops it',
+			[
+				[subscribed('connecting', true, false), 1],
+				[status('authFailed'), 2],
+				[status('connecting'), 3],
+				[status('authFailed'), 4]
+			],
+			'authFailed'
+		],
+		[
+			'credentials hint: live replaces it',
+			[
+				[subscribed('connecting', true, false), 1],
+				[status('live'), 2],
+				[status('authFailed'), 3]
+			],
+			'authFailed'
+		],
+		[
+			'credentials hint: a late subscribe result does not resurrect it after live',
+			[
+				[status('live'), 1],
+				[subscribed('connecting', true, false), 2],
+				[status('authFailed'), 3]
+			],
+			'authFailed'
+		],
+		[
+			'credentials hint: a subscribe result after the first statuses still counts',
+			[
+				[status('connecting'), 1],
+				[subscribed('connecting', true, false), 2],
+				[status('authFailed'), 3]
+			],
+			'credentialsMissing'
+		],
 		[
 			'decoder problem: unsupportedCodec',
 			[
@@ -174,7 +250,7 @@ describe('transitions', () => {
 			'a new CONFIG does not clear authFailed',
 			[
 				[status('authFailed'), 1],
-				[{ type: 'config' }, 2],
+				[{ type: 'config', codec: 'avc1.64001f' }, 2],
 				[{ type: 'frame', keyframe: true }, 3]
 			],
 			'authFailed'
@@ -183,7 +259,7 @@ describe('transitions', () => {
 			'a new CONFIG does not clear unsupportedCodec',
 			[
 				[{ type: 'problem', problem: 'unsupportedCodec' }, 1],
-				[{ type: 'config' }, 2]
+				[{ type: 'config', codec: 'avc1.64001f' }, 2]
 			],
 			'unsupportedCodec'
 		],
@@ -191,7 +267,7 @@ describe('transitions', () => {
 			'a new CONFIG does not clear decodeError',
 			[
 				[{ type: 'problem', problem: 'decodeError' }, 1],
-				[{ type: 'config' }, 2]
+				[{ type: 'config', codec: 'avc1.64001f' }, 2]
 			],
 			'decodeError'
 		]
@@ -221,7 +297,7 @@ describe('watchdogs (fake clock)', () => {
 
 	it('a keyframe while still connecting counts as progress', () => {
 		let m = initialModel(0);
-		m = reduce(m, { type: 'config' }, 5000);
+		m = reduce(m, { type: 'config', codec: 'avc1.64001f' }, 5000);
 		m = reduce(m, { type: 'frame', keyframe: true }, 9000);
 		m = reduce(m, { type: 'tick' }, 18_000);
 		expect(viewOf(m)).toBe('connecting');
@@ -250,7 +326,7 @@ describe('watchdogs (fake clock)', () => {
 	it('a new CONFIG clears the stall', () => {
 		let m = reduce(initialModel(0), { type: 'tick' }, 11_000);
 		expect(viewOf(m)).toBe('noSignal');
-		m = reduce(m, { type: 'config' }, 11_500);
+		m = reduce(m, { type: 'config', codec: 'avc1.64001f' }, 11_500);
 		expect(viewOf(m)).toBe('connecting');
 	});
 

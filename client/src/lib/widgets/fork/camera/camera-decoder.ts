@@ -48,6 +48,8 @@ export type CanvasLike = {
 export const QUEUE_LIMIT = 8;
 export const ERROR_BURST = 3;
 export const ERROR_WINDOW_MS = 10_000;
+/** After an error burst, wait this long before a keyframe may rebuild the decoder. */
+export const COOLDOWN_MS = 10_000;
 
 /** True once `limit` errors have landed inside the sliding window (pure, injected clock). */
 export function createErrorBurst(limit = ERROR_BURST, windowMs = ERROR_WINDOW_MS) {
@@ -80,6 +82,13 @@ export type CameraDecoder = {
 	configure(msg: ConfigMsg): Promise<void>;
 	push(msg: FrameMsg): void;
 	close(): void;
+	/** False when the browser has no VideoDecoder (the session must not even subscribe). */
+	available(): boolean;
+	/**
+	 * After an error burst the decoder is off until a keyframe arrives COOLDOWN_MS after the
+	 * burst. The session must not ack while this is true: acks tell the backend we consume.
+	 */
+	cooling(): boolean;
 	/**
 	 * `drawn` reached the canvas. `superseded` was decoded but replaced by a newer frame before
 	 * the animation-frame draw: display supersession, not loss. `dropped` never made it to the
@@ -95,11 +104,12 @@ export function createCameraDecoder(
 	onDraw: () => void = () => undefined
 ): CameraDecoder {
 	const burst = createErrorBurst();
-	let decoder: DecoderLike | null = null;
-	let config: DecoderConfig | null = null;
+	// the decoder and the config it was built from travel together: a rebuild needs both
+	let live: { decoder: DecoderLike; cfg: DecoderConfig } | null = null;
 	let generation = 0;
 	let closed = false;
 	let needKey = true;
+	let cooling: { since: number; cfg: DecoderConfig } | null = null;
 	let pending: FrameLike | null = null;
 	let raf = 0;
 	let drawn = 0;
@@ -109,11 +119,11 @@ export function createCameraDecoder(
 	// close() throws on a decoder the browser already closed after an error.
 	const discard = () => {
 		try {
-			decoder?.close();
+			live?.decoder.close();
 		} catch {
 			// already closed
 		}
-		decoder = null;
+		live = null;
 	};
 
 	const draw = () => {
@@ -145,23 +155,27 @@ export function createCameraDecoder(
 	};
 
 	const open = (cfg: DecoderConfig) => {
-		decoder = deps.create({ output, error: onError });
+		const decoder = deps.create({ output, error: () => onError(cfg) });
+		live = { decoder, cfg };
 		decoder.configure(cfg);
 		needKey = true;
+		cooling = null;
 	};
 
 	// A VideoDecoder is dead after an error: rebuild it from the last config unless errors keep
-	// coming (3 in 10 s), which is reported instead of looping forever.
-	const onError = () => {
+	// coming (3 in 10 s). A burst is reported and the decoder stays off (cooling) until a keyframe
+	// at least COOLDOWN_MS later rebuilds it from the last CONFIG: no loop, but no permanent death.
+	const onError = (cfg: DecoderConfig) => {
 		if (closed) return;
 		dropped++;
 		discard();
-		if (burst(deps.now())) {
+		const now = deps.now();
+		if (burst(now)) {
+			cooling = { since: now, cfg };
 			onProblem('decodeError');
 			return;
 		}
-		/* v8 ignore next -- a decoder only exists after configure(), which sets `config`. */
-		if (config) open(config);
+		open(cfg);
 	};
 
 	return {
@@ -169,7 +183,7 @@ export function createCameraDecoder(
 			const mine = ++generation;
 			discard();
 			if (!deps.available()) return onProblem('decoderUnavailable');
-			config = {
+			const config: DecoderConfig = {
 				codec: msg.codec,
 				description: msg.description,
 				optimizeForLatency: true
@@ -179,11 +193,21 @@ export function createCameraDecoder(
 			if (!ok) return onProblem('unsupportedCodec');
 			open(config);
 		},
+		available: () => deps.available(),
+		cooling: () => cooling !== null,
 		push(msg) {
-			if (!decoder) {
+			if (cooling) {
+				if (!msg.keyframe || deps.now() - cooling.since < COOLDOWN_MS) {
+					dropped++;
+					return;
+				}
+				open(cooling.cfg);
+			}
+			if (!live) {
 				dropped++;
 				return;
 			}
+			const { decoder, cfg } = live;
 			if (needKey && !msg.keyframe) {
 				dropped++;
 				return;
@@ -204,7 +228,7 @@ export function createCameraDecoder(
 					})
 				);
 			} catch {
-				onError();
+				onError(cfg);
 			}
 		},
 		close() {
