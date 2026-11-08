@@ -7,6 +7,7 @@ import type {
 	ProbeResult,
 	SaveResult
 } from './camera-types';
+import type { StatsSnapshot } from './camera-stats';
 
 export const MOVED_TEXT = 'Credentials moved to secure storage.';
 export const DROPPED_TEXT = 'Address changed — login and password cleared, enter them again.';
@@ -23,6 +24,13 @@ const ERROR_TEXT: Record<CameraErrorKind, string> = {
 	unsupportedCodec: 'The camera stream is not H.264, which is the only supported codec.',
 	streamLost: 'The stream was interrupted.'
 };
+
+/** The pause notice after a failed login; null when no lockout is active. */
+export function lockoutText(untilMs: number | null, nowMs: number): string | null {
+	if (untilMs === null || untilMs <= nowMs) return null;
+	const secs = Math.ceil((untilMs - nowMs) / 1000);
+	return `Login attempts are paused for about ${secs} s after a failed login. Saving the address or new credentials lifts the pause.`;
+}
 
 /** One notice per SaveResult flag, in display order. */
 export function saveNotices(r: SaveResult): string[] {
@@ -61,4 +69,19 @@ export function buildInput(
 	if (password !== '') input.password = password;
 	if (clearCredentials) input.clearCredentials = true;
 	return input;
+}
+
+const dash = '—';
+
+/** The diagnostics readout as label/value pairs; unknown numbers show a dash. Locale-free. */
+export function diagnosticRows(s: StatsSnapshot): [string, string][] {
+	return [
+		['Codec', s.codec ?? dash],
+		['Size', s.width && s.height ? `${s.width}×${s.height}` : dash],
+		['GOP', s.gopSeconds === null ? dash : `${s.gopSeconds.toFixed(1)} s`],
+		['First keyframe', s.ttfkMs === null ? dash : `${Math.round(s.ttfkMs)} ms`],
+		['Bitrate', s.kbps === null ? dash : `${Math.round(s.kbps)} kbit/s`],
+		['Frames', String(s.frames)],
+		['Dropped', String(s.dropped)]
+	];
 }

@@ -5,8 +5,9 @@
 import { useEffect, useState } from 'react';
 import { useSettingsOperations } from '../../plugins/useSettingsOperations';
 import { cameraConfigStatus, saveCameraConfig } from './camera-commands';
-import { addressOf, addressValid, buildInput, saveNotices } from './camera-pane';
+import { addressOf, addressValid, buildInput, lockoutText, saveNotices } from './camera-pane';
 import type { CameraStatus } from './camera-types';
+import CameraDiagnostics from './CameraDiagnostics';
 import CredentialField from './CredentialField';
 import { useCameraProbe } from './useCameraProbe';
 import './CameraSettings.css';
@@ -20,6 +21,8 @@ export default function CameraSettings() {
 	const [replacePass, setReplacePass] = useState(false);
 	const [dirty, setDirty] = useState(false);
 	const [notices, setNotices] = useState<string[]>([]);
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [lockout, setLockout] = useState<string | null>(null);
 	const { probe, probing, test, clear: clearProbe } = useCameraProbe();
 	const { saving, saved, error: saveError, invalidate, capture, save } = useSettingsOperations();
 
@@ -31,13 +34,16 @@ export default function CameraSettings() {
 		setReplaceUser(false);
 		setReplacePass(false);
 		setDirty(false);
+		setLoadError(null);
+		// Evaluated when the status arrives (not during render): the pause is a snapshot, not a ticker.
+		setLockout(lockoutText(s.authLockedUntilMs, Date.now()));
 	};
 
 	useEffect(() => {
 		const current = capture();
 		cameraConfigStatus()
 			.then((s) => current() && apply(s))
-			.catch(() => undefined);
+			.catch((e) => current() && setLoadError(e instanceof Error ? e.message : String(e)));
 	}, [capture]);
 
 	const edit = (set: (v: string) => void) => (v: string) => {
@@ -67,6 +73,9 @@ export default function CameraSettings() {
 	const configured = status?.configured ?? false;
 	return (
 		<div className="has cam-settings">
+			{loadError && (
+				<div className="has-test err">Couldn’t load the saved camera settings: {loadError}</div>
+			)}
 			{saveError && <div className="has-test err">Couldn’t save: {saveError}</div>}
 			<div className="has-statusline">
 				<span className="has-state-dim">
@@ -77,6 +86,12 @@ export default function CameraSettings() {
 						: 'not configured'}
 				</span>
 			</div>
+
+			{lockout && (
+				<div className="has-test err" role="status">
+					{lockout}
+				</div>
+			)}
 
 			<div className="rp-hd">Camera stream</div>
 			<div className="has-help">
@@ -151,9 +166,10 @@ export default function CameraSettings() {
 				</div>
 			)}
 			<div className="has-help">
-				Changing the address or port clears the saved login and password. Add a{' '}
-				<strong>Camera</strong> widget from the widget list once it is available.
+				Changing the address or port clears the saved login and password. “Clear credentials” also
+				saves the address shown above. Add a <strong>Camera</strong> widget from the widget list.
 			</div>
+			<CameraDiagnostics />
 		</div>
 	);
 }

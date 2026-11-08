@@ -33,6 +33,8 @@ export type CameraStatus = {
 	width: number | null;
 	height: number | null;
 	state: CameraWireState;
+	/** Epoch ms until which login attempts are paused after a 401/403; null when not locked. */
+	authLockedUntilMs: number | null;
 };
 
 /** `save_camera_config` argument. Blank/absent login or password = keep the stored value. */
@@ -53,9 +55,9 @@ export type SaveResult = {
 /** `camera_probe` (DESCRIBE only, studio only). */
 export type ProbeResult = {
 	ok: boolean;
-	kind?: CameraErrorKind;
-	codec?: string;
-	width?: number;
-	height?: number;
-	fps?: number;
+	kind: CameraErrorKind | null;
+	codec: string | null;
+	width: number | null;
+	height: number | null;
+	fps: number | null;
 };

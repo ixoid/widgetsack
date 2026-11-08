@@ -23,7 +23,8 @@ const BASE: CameraStatus = {
 	codec: null,
 	width: null,
 	height: null,
-	state: 'idle'
+	state: 'idle',
+	authLockedUntilMs: null
 };
 const EMPTY: CameraStatus = {
 	...BASE,
@@ -154,6 +155,7 @@ describe('CameraSettings', () => {
 		await mount(BASE);
 		vi.mocked(cameraProbe).mockResolvedValueOnce({
 			ok: true,
+			kind: null,
 			codec: 'H264',
 			width: 1920,
 			height: 1080,
@@ -162,7 +164,14 @@ describe('CameraSettings', () => {
 		fireEvent.click(btn('Test connection'));
 		expect(await screen.findByText('Connected: H264 1920×1080 · 15 fps')).toBeTruthy();
 
-		vi.mocked(cameraProbe).mockResolvedValueOnce({ ok: false, kind: 'authFailed' });
+		vi.mocked(cameraProbe).mockResolvedValueOnce({
+			ok: false,
+			kind: 'authFailed',
+			codec: null,
+			width: null,
+			height: null,
+			fps: null
+		});
 		fireEvent.click(btn('Test connection'));
 		expect(await screen.findByText(/RTSP LAN Preview/)).toBeTruthy();
 
@@ -179,6 +188,26 @@ describe('CameraSettings', () => {
 		render(<CameraSettings />);
 		await waitFor(() => expect(cameraConfigStatus).toHaveBeenCalled());
 		expect(screen.getByText('not configured')).toBeTruthy();
+		expect(await screen.findByText(/Couldn’t load the saved camera settings: x/)).toBeTruthy();
+	});
+
+	it('stringifies a non-Error load failure', async () => {
+		vi.mocked(cameraConfigStatus).mockRejectedValue('boom');
+		render(<CameraSettings />);
+		expect(await screen.findByText(/saved camera settings: boom/)).toBeTruthy();
+	});
+
+	it('shows the login pause while the lockout is active, and not when it has passed', async () => {
+		const { unmount } = await mount({ ...BASE, authLockedUntilMs: Date.now() + 60_000 });
+		expect(screen.getByText(/Login attempts are paused/)).toBeTruthy();
+		unmount();
+		await mount({ ...BASE, authLockedUntilMs: Date.now() - 1 });
+		expect(screen.queryByText(/Login attempts are paused/)).toBeNull();
+	});
+
+	it('renders the diagnostics block', async () => {
+		await mount(BASE);
+		expect(screen.getByText('Diagnostics')).toBeTruthy();
 	});
 
 	it('labels a configured camera without credentials', async () => {
