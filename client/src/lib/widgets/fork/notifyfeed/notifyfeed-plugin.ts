@@ -1,13 +1,16 @@
-// The Notifications plugin (fork N-1): recent Windows toast notifications. NO source — the
-// backend worker (widgetsack/src/fork/notifyfeed/) is demand-gated by the notify.* sensor ids
-// the meta `sensors` map subscribes, and its lifetime belongs to the app. Also NO `statusSensor`:
-// statusDotFrom doesn't know 'granted' and would label it "Not connected" in the Plugins list
-// (the Camera plugin omits it for the same reason); the pane shows the true badge.
+// The Notifications plugin (fork N-1): recent Windows toast notifications. The registered source
+// starts the backend worker (widgetsack/src/fork/notifyfeed/) at app init in BOTH window roles —
+// demand gating cannot spawn a task, so without the source a saved overlay widget would wait for
+// the Plugins pane to open. Polling itself stays demand-gated server-side (the notify.* ids the
+// meta `sensors` map subscribes) and the worker's lifetime belongs to the app. Also NO
+// `statusSensor`: statusDotFrom doesn't know 'granted' and would label it "Not connected" in the
+// Plugins list (the Camera plugin omits it for the same reason); the pane shows the true badge.
 
 import { registerPlugin } from '../../plugin';
 import { asMeter } from '../../registry';
 import NotifyFeedHost from './NotifyFeedHost';
 import NotifyFeedSettings from './NotifyFeedSettings';
+import { notifyFeedSource } from './notifyfeed-source';
 
 export const registerNotifyFeedPlugin = (): void =>
 	registerPlugin({
@@ -15,6 +18,7 @@ export const registerNotifyFeedPlugin = (): void =>
 		name: 'Notifications',
 		description:
 			'Recent Windows toast notifications (app, title, body, time), newest first and grouped by app. Unread rows stay highlighted until you mark all seen.',
+		sources: [notifyFeedSource],
 		settings: NotifyFeedSettings,
 		widgets: [
 			{

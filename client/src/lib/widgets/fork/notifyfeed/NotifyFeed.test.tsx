@@ -141,7 +141,11 @@ describe('NotifyFeed meter', () => {
 	});
 
 	it('clamps maxRows into 1..100 and applies the accent color variable', () => {
-		const many = [item({ key: '1', title: 'a' }), item({ key: '2', title: 'b' }), item({ key: '3', title: 'c' })];
+		const many = [
+			item({ key: '1', title: 'a' }),
+			item({ key: '2', title: 'b' }),
+			item({ key: '3', title: 'c' })
+		];
 		const { container, rerender } = render(
 			<NotifyFeed {...base} items={many} maxRows={150} color="#ff8800" />
 		);

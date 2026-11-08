@@ -22,6 +22,22 @@ fn ensure_studio(label: &str, command: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Worker-start config policy (pure): an unreadable/undecodable `plugins/notify.json` resolves to
+/// the defaults instead of failing `notify_connect` — `run_notify_worker`'s own fallback only
+/// sees VALIDATION errors, so deserialize-level breakage (a 0-byte file, a bad `depth_mode`
+/// word) must be caught here (CTO §4). The load error is dropped WITHOUT printing it: a serde
+/// message can echo the file's value text.
+fn worker_start_config(loaded: Result<Option<NotifyConfig>, String>) -> NotifyConfig {
+    match loaded {
+        Ok(Some(cfg)) => cfg,
+        Ok(None) => NotifyConfig::default(),
+        Err(_) => {
+            eprintln!("notifyfeed: config unreadable, using defaults");
+            NotifyConfig::default()
+        }
+    }
+}
+
 /// Persist `plugins/notify.json` (plain JSON, defaults-friendly). After a successful write the
 /// exclusion list retro-purges the ring and the meter re-emits at once (sync Q1) — even while the
 /// worker is idle or not started, because the ring lives in app state.
@@ -65,7 +81,8 @@ pub async fn notify_config_status<R: Runtime>(
 }
 
 /// Start the poll worker if not already running. Idempotent + demand-gated; `restart` (studio
-/// only) swaps in the saved config — the RING survives the swap (game-session rule).
+/// only) swaps in the saved config — the RING survives the swap (game-session rule). A broken
+/// config file resolves to defaults: connect never fails on `plugins/notify.json`.
 #[tauri::command]
 pub async fn notify_connect<R: Runtime>(
     window: tauri::WebviewWindow<R>,
@@ -80,7 +97,7 @@ pub async fn notify_connect<R: Runtime>(
     state
         .task
         .start(restart, || {
-            let cfg = config::load_config(&app)?.unwrap_or_default();
+            let cfg = worker_start_config(config::load_config(&app));
             let app_for_task = app.clone();
             Ok(Some(async move {
                 super::run_notify_worker(app_for_task, cfg).await;
@@ -125,5 +142,30 @@ mod tests {
                 "save_notify_config is only allowed from the studio window"
             );
         }
+    }
+
+    #[test]
+    fn a_deserialize_broken_config_resolves_to_defaults_for_worker_start() {
+        // What load_config yields for a 0-byte file, a bad `depth_mode` word and a non-numeric
+        // field: deserialize fails BEFORE run_notify_worker's validation fallback can see it
+        // (config.rs's defaults test covers `{}` / absent files only).
+        for file in [
+            "",
+            r#"{ "depth_mode": "daily" }"#,
+            r#"{ "poll_secs": "fast" }"#,
+        ] {
+            let loaded = serde_json::from_str::<NotifyConfig>(file)
+                .map(Some)
+                .map_err(|e| e.to_string());
+            assert!(loaded.is_err(), "deserialize must fail: {file}");
+            assert_eq!(worker_start_config(loaded), NotifyConfig::default());
+        }
+        // An absent file and a readable file keep their existing meaning.
+        assert_eq!(worker_start_config(Ok(None)), NotifyConfig::default());
+        let saved = NotifyConfig {
+            poll_secs: 10,
+            ..NotifyConfig::default()
+        };
+        assert_eq!(worker_start_config(Ok(Some(saved.clone()))), saved);
     }
 }

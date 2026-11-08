@@ -13,19 +13,25 @@ import { mqttSource } from './mqtt-source';
 import { weatherSource } from './weather-source';
 import { rssSource } from './rss-source';
 import { agendaSource } from './agenda-source';
+import { notifyFeedSource } from '../fork/notifyfeed/notifyfeed-source';
 describe('app-owned integration workers', () => {
-	it.each([haSource, stocksSource, mqttSource, weatherSource, rssSource, agendaSource])(
-		'$id: releasing one window does not stop the shared backend worker',
-		async (source) => {
-			invoke.mockClear();
-			const stopFirst = await source.start(createTelemetryHub());
-			const stopSecond = await source.start(createTelemetryHub());
-			stopFirst();
-			expect(invoke.mock.calls.some(([name]) => name.endsWith('_disconnect'))).toBe(false);
-			stopSecond();
-			expect(invoke.mock.calls.some(([name]) => name.endsWith('_disconnect'))).toBe(false);
-		}
-	);
+	it.each([
+		haSource,
+		stocksSource,
+		mqttSource,
+		weatherSource,
+		rssSource,
+		agendaSource,
+		notifyFeedSource
+	])('$id: releasing one window does not stop the shared backend worker', async (source) => {
+		invoke.mockClear();
+		const stopFirst = await source.start(createTelemetryHub());
+		const stopSecond = await source.start(createTelemetryHub());
+		stopFirst();
+		expect(invoke.mock.calls.some(([name]) => name.endsWith('_disconnect'))).toBe(false);
+		stopSecond();
+		expect(invoke.mock.calls.some(([name]) => name.endsWith('_disconnect'))).toBe(false);
+	});
 });
 
 import { haReconnect } from './ha-commands';

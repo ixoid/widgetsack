@@ -95,8 +95,8 @@ export function meterStateCopy(
 		case 'granted':
 			return itemCount === 0 ? { title: 'No notifications', hint: '' } : { title: '', hint: '' };
 		default:
-			// 'off' or no sample yet: a mounted widget re-opens the demand gate, so the first poll
-			// lands within poll_secs — transient by construction.
+			// 'off' or no sample yet: the registered source starts the worker at app init, so the
+			// first poll lands within poll_secs — transient by construction.
 			return { title: 'Reading notifications…', hint: '' };
 	}
 }
