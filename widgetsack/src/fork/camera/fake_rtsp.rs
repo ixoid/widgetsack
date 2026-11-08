@@ -28,6 +28,10 @@ pub struct FakeOptions {
     /// Connections (by accept index, 0-based) that are closed right after the frames are written,
     /// simulating a dropped stream. Later connections stay open until the client closes them.
     pub drop_connections: usize,
+    /// DESCRIBE answers `404 Not Found` (a wrong path).
+    pub not_found: bool,
+    /// Send a P-slice before the IDR, as a camera joining mid-GOP would.
+    pub leading_delta: bool,
 }
 
 impl Default for FakeOptions {
@@ -36,6 +40,8 @@ impl Default for FakeOptions {
             encoding: "H264",
             deltas: 3,
             drop_connections: 0,
+            not_found: false,
+            leading_delta: false,
         }
     }
 }
@@ -43,6 +49,9 @@ impl Default for FakeOptions {
 pub struct FakeRtsp {
     pub port: u16,
     accepts: Arc<AtomicUsize>,
+    /// Connections the CLIENT closed (the server read hit EOF), i.e. the session was dropped.
+    closed: Arc<AtomicUsize>,
+    teardowns: Arc<AtomicUsize>,
     task: JoinHandle<()>,
 }
 
@@ -52,16 +61,28 @@ impl FakeRtsp {
         let port = listener.local_addr().expect("addr").port();
         let accepts = Arc::new(AtomicUsize::new(0));
         let counter = Arc::clone(&accepts);
+        let closed = Arc::new(AtomicUsize::new(0));
+        let teardowns = Arc::new(AtomicUsize::new(0));
+        let counters = (Arc::clone(&closed), Arc::clone(&teardowns));
         let options = Arc::new(options);
         let task = tokio::spawn(async move {
             while let Ok((sock, _)) = listener.accept().await {
                 let index = counter.fetch_add(1, Ordering::SeqCst);
-                tokio::spawn(serve(sock, Arc::clone(&options), port, index));
+                let serving = Serving {
+                    options: Arc::clone(&options),
+                    port,
+                    index,
+                    closed: Arc::clone(&counters.0),
+                    teardowns: Arc::clone(&counters.1),
+                };
+                tokio::spawn(serve(sock, serving));
             }
         });
         Self {
             port,
             accepts,
+            closed,
+            teardowns,
             task,
         }
     }
@@ -72,6 +93,14 @@ impl FakeRtsp {
 
     pub fn accepts(&self) -> usize {
         self.accepts.load(Ordering::SeqCst)
+    }
+
+    pub fn closed(&self) -> usize {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    pub fn teardowns(&self) -> usize {
+        self.teardowns.load(Ordering::SeqCst)
     }
 }
 
@@ -187,7 +216,16 @@ fn rtp_packet(seq: u16, ts: u32, nal: &[u8]) -> Vec<u8> {
 /// The NAL payloads in send order: IDR (type 5) then `deltas` P-slices (type 1). No payload ends in
 /// a zero byte: retina trims trailing zeros (they are not part of the NAL).
 pub fn access_units(deltas: usize) -> Vec<Vec<u8>> {
-    let mut aus = vec![vec![0x65, 0x88, 0x84, 0x00, 0x10]];
+    access_units_from(deltas, false)
+}
+
+/// Like `access_units`, optionally led by a P-slice that precedes the first IDR.
+pub fn access_units_from(deltas: usize, leading_delta: bool) -> Vec<Vec<u8>> {
+    let mut aus = Vec::new();
+    if leading_delta {
+        aus.push(vec![0x41, 0x9a, 0x7f]);
+    }
+    aus.push(vec![0x65, 0x88, 0x84, 0x00, 0x10]);
     for i in 0..deltas {
         aus.push(vec![0x41, 0x9a, 0x10 + i as u8]);
     }
@@ -207,11 +245,37 @@ pub async fn closing_listener() -> (u16, JoinHandle<()>) {
     (port, task)
 }
 
-async fn serve(mut sock: TcpStream, options: Arc<FakeOptions>, port: u16, index: usize) {
+struct Serving {
+    options: Arc<FakeOptions>,
+    port: u16,
+    index: usize,
+    closed: Arc<AtomicUsize>,
+    teardowns: Arc<AtomicUsize>,
+}
+
+/// Counts the connection as closed however `serve` returns (EOF, write error, deliberate drop).
+struct ClosedOnDrop(Arc<AtomicUsize>);
+
+impl Drop for ClosedOnDrop {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+async fn serve(mut sock: TcpStream, serving: Serving) {
+    let Serving {
+        options,
+        port,
+        index,
+        closed,
+        teardowns,
+    } = serving;
+    let _closed = ClosedOnDrop(closed);
     let mut buf = Vec::new();
     let session = String::from("Session: 12345678;timeout=60");
     while let Some(req) = read_request(&mut sock, &mut buf).await {
         let reply = match req.method.as_str() {
+            "DESCRIBE" if options.not_found => response("404 Not Found", &req.cseq, &[], ""),
             "OPTIONS" => response(
                 "200 OK",
                 &req.cseq,
@@ -246,7 +310,8 @@ async fn serve(mut sock: TcpStream, options: Arc<FakeOptions>, port: u16, index:
             ),
             "PLAY" => {
                 let mut out = response("200 OK", &req.cseq, std::slice::from_ref(&session), "");
-                for (i, nal) in access_units(options.deltas).iter().enumerate() {
+                let aus = access_units_from(options.deltas, options.leading_delta);
+                for (i, nal) in aus.iter().enumerate() {
                     let ts = RTP_TS_BASE + TS_STEP * i as u32;
                     out.extend(rtp_packet(i as u16 + 1, ts, nal));
                 }
@@ -257,6 +322,10 @@ async fn serve(mut sock: TcpStream, options: Arc<FakeOptions>, port: u16, index:
                     return; // dropping the socket closes the connection mid-stream
                 }
                 continue;
+            }
+            "TEARDOWN" => {
+                teardowns.fetch_add(1, Ordering::SeqCst);
+                response("200 OK", &req.cseq, std::slice::from_ref(&session), "")
             }
             _ => response("200 OK", &req.cseq, std::slice::from_ref(&session), ""),
         };

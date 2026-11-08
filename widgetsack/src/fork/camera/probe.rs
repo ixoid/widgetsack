@@ -50,9 +50,12 @@ fn failed(kind: CameraErrorKind) -> ProbeResult {
 
 /// Runs a probe of `config` under the gate. A lockout refusal is an `Ok` result with
 /// `kind = authFailed` (no network); busy / too soon / not configured are fixed `Err` strings.
+/// `generation` is the config generation read BEFORE `config` was loaded, so a save that lands
+/// during DESCRIBE is not locked out by a 401 of the old login.
 pub async fn run(
     gate: &ProbeGate,
     shared: &Shared,
+    generation: u64,
     config: Option<CameraConfig>,
     step_timeout: Duration,
 ) -> Result<ProbeResult, String> {
@@ -80,7 +83,7 @@ pub async fn run(
         Ok(v) => v,
         Err(kind) => {
             if kind == CameraErrorKind::AuthFailed {
-                shared.lock_auth();
+                shared.lock_auth_for(generation);
             }
             return Ok(failed(kind));
         }
@@ -152,7 +155,7 @@ mod tests {
         let fake = FakeRtsp::start(FakeOptions::default()).await;
         let gate = ProbeGate::default();
         let shared = Shared::default();
-        let result = run(&gate, &shared, cfg(&fake.url(), fake_rtsp::PASS), STEP)
+        let result = run(&gate, &shared, 0, cfg(&fake.url(), fake_rtsp::PASS), STEP)
             .await
             .unwrap();
         assert_eq!(
@@ -175,7 +178,7 @@ mod tests {
         let fake = FakeRtsp::start(FakeOptions::default()).await;
         let gate = ProbeGate::default();
         let shared = Shared::default();
-        let first = run(&gate, &shared, cfg(&fake.url(), "wrong_pw"), STEP)
+        let first = run(&gate, &shared, 0, cfg(&fake.url(), "wrong_pw"), STEP)
             .await
             .unwrap();
         assert!(!first.ok);
@@ -184,7 +187,7 @@ mod tests {
         assert_no_leak(&serde_json::to_string(&first).unwrap(), fake.port);
         assert_no_leak(&format!("{first:?}"), fake.port);
 
-        let second = run(&gate, &shared, cfg(&fake.url(), fake_rtsp::PASS), STEP)
+        let second = run(&gate, &shared, 0, cfg(&fake.url(), fake_rtsp::PASS), STEP)
             .await
             .unwrap();
         assert_eq!(second.kind, Some(CameraErrorKind::AuthFailed));
@@ -196,21 +199,21 @@ mod tests {
         let fake = FakeRtsp::start(FakeOptions::default()).await;
         let gate = ProbeGate::default();
         let shared = Shared::default();
-        run(&gate, &shared, cfg(&fake.url(), fake_rtsp::PASS), STEP)
+        run(&gate, &shared, 0, cfg(&fake.url(), fake_rtsp::PASS), STEP)
             .await
             .unwrap();
-        let err = run(&gate, &shared, cfg(&fake.url(), fake_rtsp::PASS), STEP)
+        let err = run(&gate, &shared, 0, cfg(&fake.url(), fake_rtsp::PASS), STEP)
             .await
             .unwrap_err();
         assert_eq!(err, ERR_TOO_SOON);
         assert_eq!(fake.accepts(), 1);
 
         gate.busy.store(true, Ordering::SeqCst);
-        let err = run(&ProbeGate::default(), &shared, None, STEP)
+        let err = run(&ProbeGate::default(), &shared, 0, None, STEP)
             .await
             .unwrap_err();
         assert_eq!(err, ERR_NOT_CONFIGURED);
-        let err = run(&gate, &shared, None, STEP).await.unwrap_err();
+        let err = run(&gate, &shared, 0, None, STEP).await.unwrap_err();
         assert_eq!(err, ERR_BUSY);
         assert!(
             gate.busy.load(Ordering::SeqCst),
@@ -221,7 +224,7 @@ mod tests {
             url: "http://x/".into(),
             ..CameraConfig::default()
         });
-        let err = run(&ProbeGate::default(), &shared, bad, STEP)
+        let err = run(&ProbeGate::default(), &shared, 0, bad, STEP)
             .await
             .unwrap_err();
         assert_eq!(err, ERR_NOT_CONFIGURED);
@@ -236,6 +239,7 @@ mod tests {
         let result = run(
             &ProbeGate::default(),
             &Shared::default(),
+            0,
             cfg(&format!("rtsp://127.0.0.1:{port}/ch2"), fake_rtsp::PASS),
             STEP,
         )
@@ -256,6 +260,7 @@ mod tests {
         let result = run(
             &ProbeGate::default(),
             &Shared::default(),
+            0,
             cfg(&fake.url(), fake_rtsp::PASS),
             STEP,
         )

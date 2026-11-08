@@ -102,20 +102,29 @@ pub async fn camera_config_status<R: Runtime>(app: AppHandle<R>) -> Result<Camer
 
 /// DESCRIBE-only check of the SAVED config (takes no address). Studio-only: it spends a login
 /// attempt on the camera.
+// TODO(C-1 phase 2, T20): layout gate for overlay probe
 #[tauri::command]
 pub async fn camera_probe<R: Runtime>(
     window: tauri::WebviewWindow<R>,
     app: AppHandle<R>,
 ) -> Result<ProbeResult, String> {
     ensure_studio(window.label(), "camera_probe")?;
+    let generation = app.state::<CameraState>().shared().generation();
     let cfg = load_blocking(app.clone()).await?;
     let state = app.state::<CameraState>();
-    probe::run(&state.probe, state.shared(), cfg, worker::STEP_TIMEOUT).await
+    probe::run(
+        &state.probe,
+        state.shared(),
+        generation,
+        cfg,
+        worker::STEP_TIMEOUT,
+    )
+    .await
 }
 
 /// Start streaming into `channel` (Raw CONFIG/FRAME messages + Json status events). Phase 1: one
-/// subscriber, studio-only (the overlay layout gate comes in phase 2); a new subscribe replaces the
-/// running stream.
+/// subscriber, studio-only; a new subscribe replaces the running stream.
+// TODO(C-1 phase 2, T20): layout gate for overlay subscribe
 #[tauri::command]
 pub async fn camera_subscribe<R: Runtime>(
     window: tauri::WebviewWindow<R>,
@@ -204,7 +213,7 @@ mod tests {
         let status = with_lockout(config::to_status(Some(&cfg)), &shared);
         assert_eq!(status.state, StreamState::Idle);
         assert_eq!(status.auth_locked_until_ms, None);
-        shared.lock_auth();
+        shared.lock_auth_for(shared.generation());
         let status = with_lockout(config::to_status(Some(&cfg)), &shared);
         assert_eq!(status.state, StreamState::AuthFailed);
         assert!(status.auth_locked_until_ms.is_some());

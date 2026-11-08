@@ -8,8 +8,10 @@
 //!   (background TEARDOWN), so it must be dropped inside the runtime: shutdown is cooperative
 //!   (`select!` on a watch channel drops the attempt future in the task), never a drop from sync
 //!   code or `spawn_blocking`.
-//! - 401/403 sets the shared auth lockout and ends the worker (no retry); other failures retry after
-//!   a fixed delay (the exponential backoff is phase 2).
+//! - 401/403 sets the shared auth lockout (keyed to the generation read before the attempt loaded
+//!   its config) and ends the worker. Transient failures retry after a fixed delay (exponential
+//!   backoff is phase 2). Failures a retry cannot fix (404, protocol) park the worker: one status
+//!   event, no more attempts until a config save bumps the generation.
 //! - Deltas are never sent before a keyframe after each CONFIG; an AU above `MAX_AU_BYTES` is
 //!   dropped and the stream waits for the next keyframe.
 
@@ -164,6 +166,26 @@ enum Outcome {
     Retry(CameraErrorKind),
 }
 
+/// A wrong path or a stream retina cannot read stays wrong until the owner edits the config, so
+/// retrying every few seconds would only poll the camera forever.
+fn needs_a_save(kind: CameraErrorKind) -> bool {
+    matches!(kind, CameraErrorKind::NotFound | CameraErrorKind::Protocol)
+}
+
+/// Whether an access unit may be sent. A keyframe is required first (after each CONFIG and after a
+/// dropped oversized unit); an oversized unit is dropped and re-arms the wait.
+fn admit_unit(seen_key: &mut bool, is_key: bool, len: usize) -> bool {
+    if !*seen_key && !is_key {
+        return false;
+    }
+    if len > MAX_AU_BYTES {
+        *seen_key = false;
+        return false;
+    }
+    *seen_key = true;
+    true
+}
+
 fn log_failure(kind: CameraErrorKind, phase: &'static str) {
     crate::log::warn("camera", "stream attempt failed")
         .field("kind", kind)
@@ -179,26 +201,39 @@ pub async fn run<S: Sink>(
     mut shutdown: watch::Receiver<bool>,
 ) {
     loop {
+        // Read before the attempt loads its config, so a save during the attempt is a newer
+        // generation than anything this attempt can lock out.
+        let generation = shared.generation();
         let outcome = tokio::select! {
             biased;
             () = wait_shutdown(&mut shutdown) => Outcome::Stop,
-            outcome = attempt(&sink, &load, &shared, &options) => outcome,
+            outcome = attempt(&sink, &load, &shared, &options, generation) => outcome,
         };
         let Outcome::Retry(kind) = outcome else {
             return;
         };
+        let parked = needs_a_save(kind);
         let mut event = StatusEvent::new(StreamState::Retrying);
         event.error = Some(kind);
+        // No delay = "waiting for a config save", not a timed retry.
         event.retry_in_ms =
-            Some(u64::try_from(options.retry_delay.as_millis()).unwrap_or(u64::MAX));
+            (!parked).then(|| u64::try_from(options.retry_delay.as_millis()).unwrap_or(u64::MAX));
         if !sink.status(&event) {
             return;
         }
         tokio::select! {
             biased;
             () = wait_shutdown(&mut shutdown) => return,
-            () = tokio::time::sleep(options.retry_delay) => {}
+            () = wait_for_next_try(&shared, parked, generation, options.retry_delay) => {}
         }
+    }
+}
+
+async fn wait_for_next_try(shared: &Shared, parked: bool, generation: u64, delay: Duration) {
+    if parked {
+        shared.generation_changed_from(generation).await;
+    } else {
+        tokio::time::sleep(delay).await;
     }
 }
 
@@ -227,6 +262,7 @@ async fn attempt<S: Sink>(
     load: &LoadConfig,
     shared: &Shared,
     options: &WorkerOptions,
+    generation: u64,
 ) -> Outcome {
     if shared.auth_locked() {
         sink.status(&status_with_error(
@@ -252,7 +288,7 @@ async fn attempt<S: Sink>(
     drop(config); // the credentials are no longer needed in this frame
     let (mut session, stream_i) = match described {
         Ok(v) => v,
-        Err(kind) => return give_up_or_retry(sink, shared, kind, Phase::Describe),
+        Err(kind) => return give_up_or_retry(sink, shared, generation, kind, Phase::Describe),
     };
     let stream = &session.streams()[stream_i];
     if !is_h264(stream) {
@@ -268,10 +304,18 @@ async fn attempt<S: Sink>(
         .transport(Transport::Tcp(Default::default()))
         .frame_format(FrameFormat::MP4);
     match tokio::time::timeout(options.step_timeout, session.setup(stream_i, setup)).await {
-        Err(_) => return give_up_or_retry(sink, shared, CameraErrorKind::Timeout, Phase::Setup),
+        Err(_) => {
+            return give_up_or_retry(
+                sink,
+                shared,
+                generation,
+                CameraErrorKind::Timeout,
+                Phase::Setup,
+            );
+        }
         Ok(Err(e)) => {
             let kind = error_map::map(Phase::Setup, e.status_code(), false);
-            return give_up_or_retry(sink, shared, kind, Phase::Setup);
+            return give_up_or_retry(sink, shared, generation, kind, Phase::Setup);
         }
         Ok(Ok(())) => {}
     }
@@ -281,16 +325,32 @@ async fn attempt<S: Sink>(
     )
     .await
     {
-        Err(_) => return give_up_or_retry(sink, shared, CameraErrorKind::Timeout, Phase::Play),
+        Err(_) => {
+            return give_up_or_retry(
+                sink,
+                shared,
+                generation,
+                CameraErrorKind::Timeout,
+                Phase::Play,
+            );
+        }
         Ok(Err(e)) => {
             let kind = error_map::map(Phase::Play, e.status_code(), false);
-            return give_up_or_retry(sink, shared, kind, Phase::Play);
+            return give_up_or_retry(sink, shared, generation, kind, Phase::Play);
         }
         Ok(Ok(playing)) => playing,
     };
     let demuxed = match playing.demuxed() {
         Ok(d) => d,
-        Err(_) => return give_up_or_retry(sink, shared, CameraErrorKind::Protocol, Phase::Play),
+        Err(_) => {
+            return give_up_or_retry(
+                sink,
+                shared,
+                generation,
+                CameraErrorKind::Protocol,
+                Phase::Play,
+            );
+        }
     };
     pump(sink, demuxed, stream_i, options.item_timeout).await
 }
@@ -298,13 +358,14 @@ async fn attempt<S: Sink>(
 fn give_up_or_retry<S: Sink>(
     sink: &S,
     shared: &Shared,
+    generation: u64,
     kind: CameraErrorKind,
     phase: Phase,
 ) -> Outcome {
     log_failure(kind, phase.as_str());
     match kind {
         CameraErrorKind::AuthFailed => {
-            shared.lock_auth();
+            shared.lock_auth_for(generation);
             sink.status(&status_with_error(StreamState::AuthFailed, kind));
             Outcome::Stop
         }
@@ -363,14 +424,9 @@ async fn pump<S: Sink>(
             seen_key = false;
         }
         let is_key = frame.is_random_access_point();
-        if !seen_key && !is_key {
+        if !admit_unit(&mut seen_key, is_key, frame.data().len()) {
             continue;
         }
-        if frame.data().len() > MAX_AU_BYTES {
-            seen_key = false;
-            continue;
-        }
-        seen_key = true;
         let timestamp = frame.timestamp();
         let ts_us = ticks_to_us(timestamp.elapsed(), timestamp.clock_rate().get());
         if !sink.media(encode_frame(seq, ts_us, is_key, frame.data())) {
@@ -721,5 +777,143 @@ mod tests {
         let count = sink.snapshot().len();
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(sink.snapshot().len(), count, "nothing sent after stop");
+        // The session was really dropped: the camera sees the TCP connection close (retina sends a
+        // TEARDOWN on the way out, best effort).
+        wait_for(|| fake.closed() == 1 && fake.teardowns() == 1).await;
+        assert_eq!(fake.accepts(), 1);
+    }
+
+    /// Polls a condition for at most 3 s.
+    async fn wait_for(done: impl Fn() -> bool) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        while !done() {
+            assert!(tokio::time::Instant::now() < deadline, "timed out");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn a_delta_before_the_first_keyframe_is_never_sent() {
+        let fake = FakeRtsp::start(FakeOptions {
+            leading_delta: true,
+            ..FakeOptions::default()
+        })
+        .await;
+        let sink = VecSink::default();
+        let handle = start(
+            sink.clone(),
+            config_for(&fake.url(), fake_rtsp::USER, fake_rtsp::PASS),
+            Arc::new(Shared::default()),
+        );
+        sink.wait_until(|s| s.media().len() >= 4).await;
+        handle.stop().await;
+        let media = sink.media();
+        assert_eq!(media[0][0], KIND_CONFIG);
+        let (key, seq, _) = frame_fields(&media[1]);
+        assert!(key, "the first frame after CONFIG is the keyframe");
+        assert_eq!(seq, 0);
+        // The leading P-slice (0x41 0x9a 0x7f) was held back.
+        for msg in &media[1..] {
+            assert!(
+                !msg.ends_with(&[0x41, 0x9a, 0x7f]),
+                "held-back delta leaked"
+            );
+        }
+    }
+
+    #[test]
+    fn the_gate_holds_deltas_until_a_keyframe_and_drops_oversized_units() {
+        let mut seen = false;
+        assert!(
+            !admit_unit(&mut seen, false, 10),
+            "delta before any keyframe"
+        );
+        assert!(admit_unit(&mut seen, true, 10));
+        assert!(
+            admit_unit(&mut seen, false, 10),
+            "deltas flow after a keyframe"
+        );
+        // An oversized delta is dropped and re-arms the wait for a keyframe.
+        assert!(!admit_unit(&mut seen, false, MAX_AU_BYTES + 1));
+        assert!(!seen);
+        assert!(
+            !admit_unit(&mut seen, false, 10),
+            "waiting for a keyframe again"
+        );
+        // An oversized keyframe is dropped too, and does not count as seen.
+        assert!(!admit_unit(&mut seen, true, MAX_AU_BYTES + 1));
+        assert!(!seen);
+        // Exactly the cap is fine.
+        assert!(admit_unit(&mut seen, true, MAX_AU_BYTES));
+        assert!(admit_unit(&mut seen, false, 10));
+    }
+
+    #[tokio::test]
+    async fn a_save_during_the_attempt_is_not_locked_out_by_the_old_logins_401() {
+        let fake = FakeRtsp::start(FakeOptions::default()).await;
+        let sink = VecSink::default();
+        let shared = Arc::new(Shared::default());
+        // The loader runs after the worker read the generation; the "save" lands right after it,
+        // i.e. while DESCRIBE with the old login is in flight.
+        let config = config_for(&fake.url(), fake_rtsp::USER, "old_pw");
+        let bumper = Arc::clone(&shared);
+        let load: LoadConfig = Arc::new(move || {
+            bumper.bump_generation();
+            Ok(Some(config.clone()))
+        });
+        let handle = WorkerHandle::spawn(
+            "studio".into(),
+            "w1".into(),
+            sink.clone(),
+            load,
+            Arc::clone(&shared),
+            fast(),
+        );
+        sink.wait_until(|s| s.states().contains(&StreamState::AuthFailed))
+            .await;
+        tokio::time::timeout(Duration::from_millis(500), handle.join)
+            .await
+            .expect("worker stops after 401")
+            .unwrap();
+        assert_eq!(shared.generation(), 1);
+        assert!(!shared.auth_locked(), "the newer save must stay usable");
+    }
+
+    #[tokio::test]
+    async fn a_missing_path_is_tried_once_then_parked_until_a_save() {
+        let fake = FakeRtsp::start(FakeOptions {
+            not_found: true,
+            ..FakeOptions::default()
+        })
+        .await;
+        let sink = VecSink::default();
+        let shared = Arc::new(Shared::default());
+        let handle = start(
+            sink.clone(),
+            config_for(&fake.url(), fake_rtsp::USER, fake_rtsp::PASS),
+            Arc::clone(&shared),
+        );
+        let retrying = |s: &VecSink| {
+            s.snapshot()
+                .into_iter()
+                .filter_map(|m| match m {
+                    Msg::Status(e) if e.state == StreamState::Retrying => Some(e),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        sink.wait_until(|s| !retrying(s).is_empty()).await;
+        // Far longer than the 50 ms retry delay: a polling worker would have retried many times.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(fake.accepts(), 1, "exactly one attempt, then idle");
+        let events = retrying(&sink);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].error, Some(CameraErrorKind::NotFound));
+        assert_eq!(events[0].retry_in_ms, None, "parked, not a timed retry");
+
+        shared.bump_generation(); // the owner saved a new path
+        sink.wait_until(|s| retrying(s).len() >= 2).await;
+        assert_eq!(fake.accepts(), 2, "a save re-arms exactly one new attempt");
+        handle.stop().await;
     }
 }
