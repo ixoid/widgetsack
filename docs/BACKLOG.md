@@ -30,18 +30,29 @@ or it is blind.
 
 ## MEDIUM
 
-### [owner] Tickers: EUR→RUB, USD→RUB, BTC→USD with a red/green 24h arrow
-- **Severity:** MEDIUM
-- **File:** `examples/layouts/own-desktop.widgets.json` (ticker `ticker-3hpjgi`), `widgetsack/src/stocks.rs:350`, `client/src/lib/widgets/meters/Ticker.tsx:96`
-- **Found by:** owner (2026-11-07, mid-session request)
-- **Feature:** ticker widgets
-- **Date:** 2026-11-07
-- **Status:** open
-- **Description:** the owner wants three tickers on the overlay — rubles per euro, rubles per dollar, bitcoin in USD — each with an arrow showing the day's change, red for down and green for up. The stock `ticker` meter already draws a colour-coded arrow + % change vs Yahoo's previous close, so most of this is configuration. Two gaps: (1) the one ticker in the live layout is configured with symbol `BTC/USD`, which is not a Yahoo symbol (Yahoo wants `BTC-USD`), so it most likely shows nothing; (2) the arrow is "vs previous close" — for FX the previous trading day (flat over weekends), for BTC the previous UTC midnight; the owner confirmed that is the intended meaning.
-- **Fix:** step 1 (config only, after `scripts/snapshot-layout.ps1`): three `ticker` widgets with symbols `EURRUB=X`, `USDRUB=X`, `BTC-USD`, labels «€ → ₽», «$ → ₽», «BTC», `decimals` 2 / 2 / 0; confirm `=` survives `yahoo_chart_url` (only `^` is escaped today — `=` is legal in a URL path) and that Yahoo returns `chartPreviousClose` for `=X` pairs. Owner decision 2026-11-07: change vs previous close is exactly what is wanted — no rolling-24h work.
-- **Check:** overlay shows three tickers with a price and a coloured arrow for each symbol; `grep -c '"symbol": "BTC/USD"' examples/layouts/own-desktop.widgets.json → 0` after the layout is fixed and re-snapshotted.
-
 ## LOW / Cosmetic
+
+### [qa] Yahoo symbol help lost code formatting
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/plugins/stocks-provider.ts` (`stocksSymbolHelp`)
+- **Found by:** qa-reviewer (run T-1-20261108-1046)
+- **Feature:** T-1 cbr-binance stocks provider
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** upstream rendered AAPL / BTC-USD / ^GSPC in `<code>` in the Stocks pane help; the provider-dependent help is now a plain string, so the examples lost their code styling.
+- **Fix:** return the example symbols separately and render them in `<code>` in `StocksSettings.tsx`.
+- **Check:** `cd client && npx vitest run src/lib/widgets/plugins/StocksSettings.test.tsx` → a case asserting the first `code` element reads `AAPL` under Yahoo is green (positive control: the CBR + Binance hint still lists `USDRUB=X`).
+
+### [qa] cbr arm timing span excludes the sample mapping
+- **Severity:** LOW
+- **File:** `widgetsack/src/stocks.rs` (`run_stocks_client`, cbr arm), `widgetsack/src/fork/stocks_cbr.rs` (`poll_symbol`)
+- **Found by:** qa-reviewer (run T-1-20261108-1046)
+- **Feature:** T-1 cbr-binance stocks provider
+- **Date:** 2026-11-08
+- **Status:** open
+- **Description:** the `plugin.stocks` timing span covers only the emit in the cbr arm; the Yahoo arm times parse + emit. The mapping is microseconds, so the Studio timings panel under-reports the cbr provider slightly.
+- **Fix:** move the span into `poll_symbol` around the mapping, or accept and document in ADR-004.
+- **Check:** none — timing semantics are a judgement call for the owner.
 
 ### [qa] HWiNFO per-core clocks exist only on the shared-memory path
 - **Severity:** LOW
@@ -88,6 +99,17 @@ or it is blind.
 
 ## Closed
 <!-- fixed / wont-fix / stale items moved here with date + reason -->
+### [owner] Tickers: EUR→RUB, USD→RUB, BTC→USD with a red/green 24h arrow
+- **Severity:** MEDIUM
+- **File:** `examples/layouts/own-desktop.widgets.json` (ticker `ticker-3hpjgi`), `widgetsack/src/stocks.rs:350`, `client/src/lib/widgets/meters/Ticker.tsx:96`
+- **Found by:** owner (2026-11-07, mid-session request)
+- **Feature:** ticker widgets
+- **Date:** 2026-11-07
+- **Status:** closed 2026-11-08 — T-1 (`cbr-binance` provider, run T-1-20261108-1046): `grep -c '"symbol": "BTC/USD"' examples/layouts/own-desktop.widgets.json` → `0` (the live layout already carries `BTC-USD`, `USDRUB=X`, `EURRUB=X`); live dev overlay after `plugins/stocks.json` → `provider: cbr-binance`: USD/RUB 82.14 ▲ +0.42 % green, BTC/USD $75,925.09 ▼ −0.26 % red with sparkline, EUR/RUB 92.19 ▲ +0.04 % green (`work/shot-2026-11-08-T1-tickers.png`; positive control: `work/shot-2026-11-08-start.png` same row on Yahoo shows `—`). Yahoo symbols were never the fix — Yahoo times out from the owner's network; see ADR-004.
+- **Description:** the owner wants three tickers on the overlay — rubles per euro, rubles per dollar, bitcoin in USD — each with an arrow showing the day's change, red for down and green for up. The stock `ticker` meter already draws a colour-coded arrow + % change vs Yahoo's previous close, so most of this is configuration. Two gaps: (1) the one ticker in the live layout is configured with symbol `BTC/USD`, which is not a Yahoo symbol (Yahoo wants `BTC-USD`), so it most likely shows nothing; (2) the arrow is "vs previous close" — for FX the previous trading day (flat over weekends), for BTC the previous UTC midnight; the owner confirmed that is the intended meaning.
+- **Fix:** step 1 (config only, after `scripts/snapshot-layout.ps1`): three `ticker` widgets with symbols `EURRUB=X`, `USDRUB=X`, `BTC-USD`, labels «€ → ₽», «$ → ₽», «BTC», `decimals` 2 / 2 / 0; confirm `=` survives `yahoo_chart_url` (only `^` is escaped today — `=` is legal in a URL path) and that Yahoo returns `chartPreviousClose` for `=X` pairs. Owner decision 2026-11-07: change vs previous close is exactly what is wanted — no rolling-24h work.
+- **Check:** overlay shows three tickers with a price and a coloured arrow for each symbol; `grep -c '"symbol": "BTC/USD"' examples/layouts/own-desktop.widgets.json → 0` after the layout is fixed and re-snapshotted.
+
 
 ### [qa] met.no day highs/lows for days 3-6 use 6-hourly instants
 - **Severity:** LOW
