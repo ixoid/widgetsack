@@ -64,6 +64,38 @@ pub fn encode_frame(seq: u32, ts_us: u64, is_keyframe: bool, nal_data: &[u8]) ->
     out
 }
 
+/// What an encoded message is, as far as the fan-out needs to know.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Config,
+    Frame { key: bool },
+}
+
+/// Reads the kind (and keyframe flag) from the common header. `None` for anything that is not a
+/// well-formed CONFIG/FRAME header; the fan-out drops such a message rather than guessing.
+pub fn classify(message: &[u8]) -> Option<Kind> {
+    if message.len() < HEADER_LEN {
+        return None;
+    }
+    match message[0] {
+        KIND_CONFIG => Some(Kind::Config),
+        KIND_FRAME => Some(Kind::Frame {
+            key: message[1] & FLAG_KEYFRAME != 0,
+        }),
+        _ => None,
+    }
+}
+
+/// A copy of `message` with its header seq replaced. Seq numbering is per subscriber (see `flow`),
+/// so the fan-out stamps each copy; the byte layout itself is unchanged.
+pub fn with_seq(message: &[u8], seq: u32) -> Vec<u8> {
+    let mut out = message.to_vec();
+    if out.len() >= HEADER_LEN {
+        out[4..8].copy_from_slice(&seq.to_le_bytes());
+    }
+    out
+}
+
 /// retina's `Timestamp::elapsed()` is in RTP clock ticks (90 kHz for video), not microseconds.
 /// Negative values (a packet stamped before the stream start) clamp to 0; a zero clock rate yields 0.
 pub fn ticks_to_us(elapsed_ticks: i64, clock_rate_hz: u32) -> u64 {
@@ -149,6 +181,32 @@ mod tests {
         assert_eq!(&msg[10..12], &2u16.to_le_bytes());
         assert_eq!(msg[12], 1);
         assert_eq!(&msg[13..], b"c\x09");
+    }
+
+    #[test]
+    fn classify_reads_kind_and_keyframe_flag() {
+        assert_eq!(classify(&golden("config")), Some(Kind::Config));
+        assert_eq!(
+            classify(&golden("frame_key")),
+            Some(Kind::Frame { key: true })
+        );
+        assert_eq!(
+            classify(&golden("frame_delta")),
+            Some(Kind::Frame { key: false })
+        );
+        assert_eq!(classify(&[2, 1, 0]), None, "shorter than a header");
+        assert_eq!(classify(&[9, 0, 0, 0, 0, 0, 0, 0]), None, "unknown kind");
+    }
+
+    #[test]
+    fn with_seq_rewrites_only_the_seq() {
+        let key = golden("frame_key");
+        let stamped = with_seq(&key, 0xdead_beef);
+        assert_eq!(&stamped[4..8], &0xdead_beef_u32.to_le_bytes());
+        assert_eq!(&stamped[..4], &key[..4]);
+        assert_eq!(&stamped[8..], &key[8..]);
+        assert_eq!(with_seq(&stamped, 0), key, "round trip to the golden seq 0");
+        assert_eq!(with_seq(&[1, 2], 5), vec![1, 2], "too short: untouched");
     }
 
     #[test]

@@ -1,6 +1,7 @@
-//! Tauri commands of the camera widget. Save, probe and (phase 1) subscribe are studio-only; the
-//! status read is open to every window because it carries no secret (host/port/path and booleans).
-//! Unsubscribe only reduces demand and only touches the caller's own `(window, key)`.
+//! Tauri commands of the camera widget. Save is studio-only. Probe and subscribe are open to the
+//! studio and to overlays whose SAVED layout contains a Camera widget (`gate`). The status read is
+//! open to every window because it carries no secret (host/port/path and booleans). Unsubscribe and
+//! ack only touch the caller's own `(window, key)`.
 
 use std::sync::Arc;
 
@@ -8,9 +9,10 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Manager, Runtime};
 
 use super::config::{self, SaveInput};
+use super::registry::Start;
 use super::types::{CameraStatus, ProbeResult, SaveResult, StreamState};
-use super::worker::{self, LoadConfig, WorkerHandle, WorkerOptions};
-use super::{CameraState, Shared, probe};
+use super::worker::{self, LoadConfig, WorkerOptions};
+use super::{CameraState, Shared, gate, probe};
 
 const MAX_KEY_LEN: usize = 64;
 
@@ -77,16 +79,23 @@ pub async fn save_camera_config<R: Runtime>(
         clear_credentials: clear_credentials.unwrap_or(false),
     };
     // DPAPI + file IO stay off the async worker threads.
-    tokio::task::spawn_blocking(move || {
+    let blocking_app = app.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let app = blocking_app;
         let state = app.state::<CameraState>();
         let _guard = state.lock_save();
         let path = config::config_path(&app)?;
         let result = config::save_input(&path, input)?;
         state.bump_generation();
-        Ok(result)
+        Ok::<_, String>(result)
     })
     .await
-    .map_err(|_| "camera config save failed".to_string())?
+    .map_err(|_| "camera config save failed".to_string())??;
+    // A live session still runs on the old address/login: restart it in the background (the old
+    // session is torn down first), so the save does not wait for the TEARDOWN.
+    let hub = Arc::clone(&app.state::<CameraState>().hub);
+    tokio::spawn(async move { hub.restart().await });
+    Ok(result)
 }
 
 /// The secret-free status of the saved config. Not studio-gated: it returns no credential or URL.
@@ -100,15 +109,14 @@ pub async fn camera_config_status<R: Runtime>(app: AppHandle<R>) -> Result<Camer
     ))
 }
 
-/// DESCRIBE-only check of the SAVED config (takes no address). Studio-only: it spends a login
-/// attempt on the camera.
-// TODO(C-1 phase 2, T20): layout gate for overlay probe
+/// DESCRIBE-only check of the SAVED config (takes no address). It spends a login attempt on the
+/// camera, so it is single-flight and throttled; an overlay needs a Camera widget in its saved layout.
 #[tauri::command]
 pub async fn camera_probe<R: Runtime>(
     window: tauri::WebviewWindow<R>,
     app: AppHandle<R>,
 ) -> Result<ProbeResult, String> {
-    ensure_studio(window.label(), "camera_probe")?;
+    gate::authorize_saved(&app, window.label()).await?;
     let generation = app.state::<CameraState>().shared().generation();
     let cfg = load_blocking(app.clone()).await?;
     let state = app.state::<CameraState>();
@@ -122,9 +130,9 @@ pub async fn camera_probe<R: Runtime>(
     .await
 }
 
-/// Start streaming into `channel` (Raw CONFIG/FRAME messages + Json status events). Phase 1: one
-/// subscriber, studio-only; a new subscribe replaces the running stream.
-// TODO(C-1 phase 2, T20): layout gate for overlay subscribe
+/// Start streaming into `channel` (Raw CONFIG/FRAME messages + Json status events). Subscribers
+/// share one RTSP session; subscribing again with the same `(window, key)` replaces the entry. An
+/// overlay needs a Camera widget in its saved layout.
 #[tauri::command]
 pub async fn camera_subscribe<R: Runtime>(
     window: tauri::WebviewWindow<R>,
@@ -132,28 +140,27 @@ pub async fn camera_subscribe<R: Runtime>(
     channel: Channel<InvokeResponseBody>,
     key: String,
 ) -> Result<CameraStatus, String> {
-    ensure_studio(window.label(), "camera_subscribe")?;
+    gate::authorize_saved(&app, window.label()).await?;
     validate_key(&key)?;
     let cfg = load_blocking(app.clone()).await?;
     let state = app.state::<CameraState>();
     let status = with_lockout(config::to_status(cfg.as_ref()), state.shared());
     drop(cfg);
-    let mut slot = state.worker.lock().await;
-    if let Some(previous) = slot.take() {
-        previous.stop().await;
-    }
-    *slot = Some(WorkerHandle::spawn(
-        window.label().to_string(),
-        key,
+    state.hub.subscribe(
+        window.label(),
+        &key,
         channel,
-        file_loader(app.clone()),
-        Arc::clone(state.shared()),
-        WorkerOptions::default(),
-    ));
+        Start {
+            load: file_loader(app.clone()),
+            shared: Arc::clone(state.shared()),
+            options: WorkerOptions::default(),
+        },
+    );
     Ok(status)
 }
 
-/// Stop the caller's own stream; anything else (another window's or key's) is a no-op.
+/// Remove the caller's own subscriber; anything else (another window's or key's) is a no-op. The
+/// stream stops 2 s after the last one leaves.
 #[tauri::command]
 pub async fn camera_unsubscribe<R: Runtime>(
     window: tauri::WebviewWindow<R>,
@@ -161,14 +168,25 @@ pub async fn camera_unsubscribe<R: Runtime>(
     key: String,
 ) -> Result<(), String> {
     validate_key(&key)?;
-    let state = app.state::<CameraState>();
-    let mut slot = state.worker.lock().await;
-    let owns = slot
-        .as_ref()
-        .is_some_and(|h| h.label == window.label() && h.key == key);
-    if owns && let Some(handle) = slot.take() {
-        handle.stop().await;
-    }
+    app.state::<CameraState>()
+        .hub
+        .unsubscribe(window.label(), &key);
+    Ok(())
+}
+
+/// Flow control: the client confirms it has handled frame `seq` (it acks every 8 frames and every
+/// keyframe). An unknown `(window, key)` is a no-op, so a late ack after unsubscribe is harmless.
+/// Open to studio and overlay: it only moves the caller's own counter.
+#[tauri::command]
+pub async fn camera_ack<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    app: AppHandle<R>,
+    key: String,
+    seq: u32,
+) -> Result<(), String> {
+    app.state::<CameraState>()
+        .hub
+        .ack(window.label(), &key, seq);
     Ok(())
 }
 

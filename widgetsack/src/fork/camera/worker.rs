@@ -9,9 +9,11 @@
 //!   (`select!` on a watch channel drops the attempt future in the task), never a drop from sync
 //!   code or `spawn_blocking`.
 //! - 401/403 sets the shared auth lockout (keyed to the generation read before the attempt loaded
-//!   its config) and ends the worker. Transient failures retry after a fixed delay (exponential
-//!   backoff is phase 2). Failures a retry cannot fix (404, protocol) park the worker: one status
-//!   event, no more attempts until a config save bumps the generation.
+//!   its config) and ends the worker. Transient failures retry on the `backoff` ladder (1, 2, 4 ...
+//!   30 s, reset after 10 s of live). Failures a retry cannot fix (404, protocol) park the worker:
+//!   one status event, no more attempts until a config save bumps the generation.
+//! - The worker serves ONE sink; the registry (`registry.rs`) hands it a fan-out sink, so N
+//!   subscribers share one RTSP session.
 //! - Deltas are never sent before a keyframe after each CONFIG; an AU above `MAX_AU_BYTES` is
 //!   dropped and the stream waits for the next keyframe.
 
@@ -29,6 +31,7 @@ use tokio::task::JoinHandle;
 use url::Url;
 
 use super::Shared;
+use super::backoff::{Backoff, Policy};
 use super::config::{self, CameraConfig};
 use super::error_map::{self, Phase};
 use super::framing::{encode_config, encode_frame, ticks_to_us};
@@ -36,7 +39,6 @@ use super::types::{CameraErrorKind, StatusEvent, StreamState};
 
 pub const STEP_TIMEOUT: Duration = Duration::from_secs(10);
 pub const ITEM_TIMEOUT: Duration = Duration::from_secs(8);
-pub const RETRY_DELAY: Duration = Duration::from_secs(2);
 pub const JOIN_TIMEOUT: Duration = Duration::from_secs(2);
 pub const MAX_AU_BYTES: usize = 4 * 1024 * 1024;
 
@@ -64,7 +66,7 @@ pub type LoadConfig = Arc<dyn Fn() -> Result<Option<CameraConfig>, String> + Sen
 pub struct WorkerOptions {
     pub step_timeout: Duration,
     pub item_timeout: Duration,
-    pub retry_delay: Duration,
+    pub backoff: Policy,
 }
 
 impl Default for WorkerOptions {
@@ -72,15 +74,13 @@ impl Default for WorkerOptions {
         Self {
             step_timeout: STEP_TIMEOUT,
             item_timeout: ITEM_TIMEOUT,
-            retry_delay: RETRY_DELAY,
+            backoff: Policy::default(),
         }
     }
 }
 
-/// A running worker and who it serves.
+/// A running worker.
 pub struct WorkerHandle {
-    pub label: String,
-    pub key: String,
     shutdown: watch::Sender<bool>,
     join: JoinHandle<()>,
 }
@@ -89,8 +89,6 @@ impl WorkerHandle {
     /// Must be called inside the tokio runtime (async commands run on Tauri's tokio runtime), so the
     /// task — and the retina session it owns — always lives and drops there.
     pub fn spawn<S: Sink>(
-        label: String,
-        key: String,
         sink: S,
         load: LoadConfig,
         shared: Arc<Shared>,
@@ -98,12 +96,12 @@ impl WorkerHandle {
     ) -> Self {
         let (shutdown, rx) = watch::channel(false);
         let join = tokio::spawn(run(sink, load, shared, options, rx));
-        Self {
-            label,
-            key,
-            shutdown,
-            join,
-        }
+        Self { shutdown, join }
+    }
+
+    /// The task ended by itself (terminal state: auth failure, unsupported codec, no config).
+    pub fn is_finished(&self) -> bool {
+        self.join.is_finished()
     }
 
     /// Cooperative stop: the task drops its session (TEARDOWN) itself; abort only if it hangs.
@@ -163,7 +161,20 @@ pub(super) fn codec_name(stream: &retina::client::Stream) -> String {
 enum Outcome {
     /// The worker is done (shutdown, sink gone, auth failure, unsupported codec, no config).
     Stop,
-    Retry(CameraErrorKind),
+    Retry {
+        kind: CameraErrorKind,
+        /// How long the session was `live` before it ended; feeds the backoff reset.
+        live_for: Option<Duration>,
+    },
+}
+
+impl Outcome {
+    fn retry(kind: CameraErrorKind) -> Self {
+        Self::Retry {
+            kind,
+            live_for: None,
+        }
+    }
 }
 
 /// A wrong path or a stream retina cannot read stays wrong until the owner edits the config, so
@@ -200,6 +211,7 @@ pub async fn run<S: Sink>(
     options: WorkerOptions,
     mut shutdown: watch::Receiver<bool>,
 ) {
+    let mut backoff = Backoff::new(options.backoff);
     loop {
         // Read before the attempt loads its config, so a save during the attempt is a newer
         // generation than anything this attempt can lock out.
@@ -209,31 +221,36 @@ pub async fn run<S: Sink>(
             () = wait_shutdown(&mut shutdown) => Outcome::Stop,
             outcome = attempt(&sink, &load, &shared, &options, generation) => outcome,
         };
-        let Outcome::Retry(kind) = outcome else {
+        let Outcome::Retry { kind, live_for } = outcome else {
             return;
         };
-        let parked = needs_a_save(kind);
+        if let Some(live_for) = live_for {
+            backoff.note_live(live_for);
+        }
+        // No delay = "waiting for a config save", not a timed retry.
+        let delay = (!needs_a_save(kind)).then(|| backoff.next_delay());
         let mut event = StatusEvent::new(StreamState::Retrying);
         event.error = Some(kind);
-        // No delay = "waiting for a config save", not a timed retry.
-        event.retry_in_ms =
-            (!parked).then(|| u64::try_from(options.retry_delay.as_millis()).unwrap_or(u64::MAX));
+        event.retry_in_ms = delay.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
         if !sink.status(&event) {
             return;
         }
         tokio::select! {
             biased;
             () = wait_shutdown(&mut shutdown) => return,
-            () = wait_for_next_try(&shared, parked, generation, options.retry_delay) => {}
+            () = wait_for_next_try(&shared, delay, generation) => {}
+        }
+        if delay.is_none() {
+            // A save gives the parked worker a fresh start, not the tail of an old ladder.
+            backoff.reset();
         }
     }
 }
 
-async fn wait_for_next_try(shared: &Shared, parked: bool, generation: u64, delay: Duration) {
-    if parked {
-        shared.generation_changed_from(generation).await;
-    } else {
-        tokio::time::sleep(delay).await;
+async fn wait_for_next_try(shared: &Shared, delay: Option<Duration>, generation: u64) {
+    match delay {
+        Some(delay) => tokio::time::sleep(delay).await,
+        None => shared.generation_changed_from(generation).await,
     }
 }
 
@@ -369,7 +386,7 @@ fn give_up_or_retry<S: Sink>(
             sink.status(&status_with_error(StreamState::AuthFailed, kind));
             Outcome::Stop
         }
-        _ => Outcome::Retry(kind),
+        _ => Outcome::retry(kind),
     }
 }
 
@@ -382,14 +399,17 @@ async fn pump<S: Sink>(
     let mut seq: u32 = 0;
     let mut configured = false;
     let mut seen_key = false;
-    let mut live = false;
+    let mut live_since: Option<tokio::time::Instant> = None;
     loop {
         let item = match tokio::time::timeout(item_timeout, demuxed.next()).await {
             Ok(Some(Ok(item))) => item,
             // Stall, end of stream or a broken stream: all "lost" (error text is never inspected).
             _ => {
                 log_failure(CameraErrorKind::StreamLost, Phase::Stream.as_str());
-                return Outcome::Retry(error_map::map(Phase::Stream, None, false));
+                return Outcome::Retry {
+                    kind: error_map::map(Phase::Stream, None, false),
+                    live_for: live_since.map(|t| t.elapsed()),
+                };
             }
         };
         let CodecItem::VideoFrame(frame) = item else {
@@ -402,7 +422,10 @@ async fn pump<S: Sink>(
         if !configured || frame.has_new_parameters() {
             let Some(ParametersRef::Video(params)) = demuxed.streams()[stream_i].parameters()
             else {
-                return Outcome::Retry(CameraErrorKind::Protocol);
+                return Outcome::Retry {
+                    kind: CameraErrorKind::Protocol,
+                    live_for: live_since.map(|t| t.elapsed()),
+                };
             };
             let (width, height) = params.pixel_dimensions();
             seq = 0;
@@ -413,7 +436,10 @@ async fn pump<S: Sink>(
                 params.rfc6381_codec(),
                 params.extra_data(),
             ) else {
-                return Outcome::Retry(CameraErrorKind::Protocol);
+                return Outcome::Retry {
+                    kind: CameraErrorKind::Protocol,
+                    live_for: live_since.map(|t| t.elapsed()),
+                };
             };
             codec = Some(params.rfc6381_codec().to_owned());
             if !sink.media(message) {
@@ -433,8 +459,8 @@ async fn pump<S: Sink>(
             return Outcome::Stop;
         }
         seq = seq.wrapping_add(1);
-        if !live {
-            live = true;
+        if live_since.is_none() {
+            live_since = Some(tokio::time::Instant::now());
             let mut event = StatusEvent::new(StreamState::Live);
             event.codec = codec;
             if !sink.status(&event) {
@@ -533,19 +559,16 @@ mod tests {
         WorkerOptions {
             step_timeout: Duration::from_secs(2),
             item_timeout: Duration::from_secs(2),
-            retry_delay: Duration::from_millis(50),
+            backoff: Policy {
+                base: Duration::from_millis(50),
+                cap: Duration::from_millis(200),
+                reset_after_live: Duration::from_secs(10),
+            },
         }
     }
 
     fn start(sink: VecSink, config: CameraConfig, shared: Arc<Shared>) -> WorkerHandle {
-        WorkerHandle::spawn(
-            "studio".into(),
-            "w1".into(),
-            sink,
-            loader(config),
-            shared,
-            fast(),
-        )
+        WorkerHandle::spawn(sink, loader(config), shared, fast())
     }
 
     fn frame_fields(msg: &[u8]) -> (bool, u32, u64) {
@@ -716,8 +739,6 @@ mod tests {
     async fn no_config_reports_not_configured_and_stops() {
         let sink = VecSink::default();
         let handle = WorkerHandle::spawn(
-            "studio".into(),
-            "w1".into(),
             sink.clone(),
             Arc::new(|| Ok(None)),
             Arc::new(Shared::default()),
@@ -743,7 +764,7 @@ mod tests {
                 .filter(|st| **st == StreamState::Retrying)
                 .count()
         };
-        sink.wait_until(|s| retries(s) >= 2).await;
+        sink.wait_until(|s| retries(s) >= 4).await;
         handle.stop().await;
         server.abort();
         let first_retry = sink
@@ -755,6 +776,17 @@ mod tests {
             })
             .unwrap();
         assert_eq!(first_retry.error, Some(CameraErrorKind::Unreachable));
+        // The delays climb the ladder (base 50 ms, cap 200 ms in tests) instead of repeating.
+        let delays: Vec<Option<u64>> = sink
+            .snapshot()
+            .into_iter()
+            .filter_map(|m| match m {
+                Msg::Status(e) if e.state == StreamState::Retrying => Some(e.retry_in_ms),
+                _ => None,
+            })
+            .take(4)
+            .collect();
+        assert_eq!(delays, [Some(50), Some(100), Some(200), Some(200)]);
     }
 
     #[tokio::test]
@@ -861,14 +893,7 @@ mod tests {
             bumper.bump_generation();
             Ok(Some(config.clone()))
         });
-        let handle = WorkerHandle::spawn(
-            "studio".into(),
-            "w1".into(),
-            sink.clone(),
-            load,
-            Arc::clone(&shared),
-            fast(),
-        );
+        let handle = WorkerHandle::spawn(sink.clone(), load, Arc::clone(&shared), fast());
         sink.wait_until(|s| s.states().contains(&StreamState::AuthFailed))
             .await;
         tokio::time::timeout(Duration::from_millis(500), handle.join)

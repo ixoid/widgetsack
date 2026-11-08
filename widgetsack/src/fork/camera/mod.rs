@@ -3,23 +3,30 @@
 //! managed state and wires the seams together.
 //!
 //! Pure seams (unit-tested, no IO): `config` (address split/validate, secret merge, status),
-//! `error_map` (phase + status code -> `CameraErrorKind`), `framing` (binary channel messages).
-//! `types` holds every struct that crosses the bridge and, by construction, none of them can contain
-//! a `Secret`. IO: `probe` (DESCRIBE-only check) and `worker` (the retina session pump).
+//! `error_map` (phase + status code -> `CameraErrorKind`), `framing` (binary channel messages),
+//! `backoff` (retry ladder), `flow` (per-subscriber backpressure), `gate` (layout gate for
+//! overlays). `types` holds every struct that crosses the bridge and, by construction, none of them
+//! can contain a `Secret`. IO: `probe` (DESCRIBE-only check), `worker` (the retina session pump) and
+//! `registry` (subscribers, fan-out, grace and restart around the single worker).
 
+pub mod backoff;
 pub mod commands;
 pub mod config;
 pub mod error_map;
 #[cfg(test)]
 mod fake_rtsp;
+pub mod flow;
 pub mod framing;
+pub mod gate;
 pub mod probe;
+pub mod registry;
 pub mod types;
 pub mod worker;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::watch;
 
 /// How long a 401/403 (from the worker or a probe) blocks further attempts, unless a save comes
@@ -115,8 +122,8 @@ pub struct CameraState {
     /// Serialises the read-merge-write of the config file, so two quick saves cannot interleave.
     save_lock: Mutex<()>,
     pub(crate) probe: probe::ProbeGate,
-    /// The single running stream (phase 1: one subscriber; a new subscribe replaces it).
-    pub(crate) worker: tokio::sync::Mutex<Option<worker::WorkerHandle>>,
+    /// Subscribers and the one shared stream worker.
+    pub(crate) hub: Arc<registry::Hub<Channel<InvokeResponseBody>>>,
 }
 
 impl CameraState {
@@ -133,6 +140,12 @@ impl CameraState {
         // A panic in a previous save must not wedge saving forever; the guarded data is `()`.
         self.save_lock.lock().unwrap_or_else(|e| e.into_inner())
     }
+}
+
+/// Window-event hook for `main.rs` (mirrors `audio::forget_window`): a destroyed webview can no
+/// longer unsubscribe, so drop every camera subscriber of `label`. Unknown labels are a no-op.
+pub fn forget_window(state: &CameraState, label: &str) {
+    state.hub.forget_window(label);
 }
 
 #[cfg(test)]
