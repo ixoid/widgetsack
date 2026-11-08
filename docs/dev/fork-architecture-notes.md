@@ -171,7 +171,7 @@ the newest decoded frame and draws it onto the canvas in `requestAnimationFrame`
 while frames are outstanding drops the subscriber (dead webview). A new subscriber gets the cached CONFIG
 and the latest keyframe, not a GOP; the cache is cleared whenever the stream leaves `live`. The seq is
 per subscriber, counts frames actually sent (no gaps) and never resets across CONFIG or reconnect, so
-the client must not infer drops from seq. Client side: `decodeQueueSize > 8` drops deltas until the
+the client must not infer drops from seq. Client side: `decodeQueueSize > 20` drops deltas until the
 next keyframe.
 
 **Layout gate.** `camera_subscribe` and `camera_probe` from a non-studio window call

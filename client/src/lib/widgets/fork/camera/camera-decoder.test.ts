@@ -343,6 +343,37 @@ describe('backpressure and counters', () => {
 		expect(t.dec.counters()).toEqual({ drawn: 0, superseded: 0, dropped: 2 });
 	});
 
+	it('absorbs a Wi-Fi retransmit burst: deltas decode with the queue at 12 and 19', async () => {
+		const t = setup();
+		await t.dec.configure(CONFIG);
+		t.dec.push(frame(0, true));
+		t.setQueue(12);
+		t.dec.push(frame(1, false)); // a burst backlog, still under the raised limit
+		t.setQueue(19);
+		t.dec.push(frame(2, false)); // at 19 of 20: no trip
+		t.setQueue(0);
+		t.dec.push(frame(3, false)); // the gate never closed: deltas keep flowing after the burst
+		expect(t.decoders[0].chunks.map((c) => (c as { timestamp: number }).timestamp)).toEqual([
+			0, 1000, 2000, 3000
+		]);
+		expect(t.dec.counters()).toEqual({ drawn: 0, superseded: 0, dropped: 0 });
+	});
+
+	it('still trips at 21: the delta is dropped, later deltas wait for a keyframe', async () => {
+		const t = setup();
+		await t.dec.configure(CONFIG);
+		t.dec.push(frame(0, true));
+		t.setQueue(21);
+		t.dec.push(frame(1, false)); // one frame over the raised limit: dropped, gate closes
+		t.dec.push(frame(2, true)); // a keyframe is never dropped for the backlog
+		t.setQueue(0);
+		t.dec.push(frame(3, false)); // the keyframe reopened the gate
+		expect(t.decoders[0].chunks.map((c) => (c as { timestamp: number }).timestamp)).toEqual([
+			0, 2000, 3000
+		]);
+		expect(t.dec.counters()).toEqual({ drawn: 0, superseded: 0, dropped: 1 });
+	});
+
 	it('counts supersession separately from drops', async () => {
 		const t = setup();
 		await t.dec.configure(CONFIG);

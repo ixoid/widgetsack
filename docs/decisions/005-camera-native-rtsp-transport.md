@@ -91,6 +91,8 @@ webview receives only: CameraStatus {host, port, path, hasUsername, hasPassword,
 - **Invariants:** no `log` backend is installed (retina logs via the `log` facade); retina errors,
   `Credentials`, `SessionOptions` are never formatted; a retina `Session` is dropped only inside the
   tokio runtime (its drop spawns the TEARDOWN task).
+- **2026-11-08:** thresholds raised (client queue 8→20) after Wi-Fi-burst stutter diagnosis on the
+  owner's two-hop Wi-Fi; Rust flow window (24) unchanged — acks follow frame arrival, not decode.
 
 ### Fallback trigger (option B, no new owner question)
 The spike is NO-GO when any of: retina fails DESCRIBE/SETUP/PLAY against this firmware; the codec is
