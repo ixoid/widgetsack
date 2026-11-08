@@ -3,6 +3,9 @@
 // camelCase (the struct is `#[serde(rename_all = "camelCase")]`). Yahoo is keyless, so nothing here
 // is secret.
 
+/** Quote source; the backend normalises anything else to `yahoo`. */
+export type StocksProvider = 'yahoo' | 'cbr-binance';
+
 /** Non-secret stocks config from `stocks_config_status`. */
 export type StocksStatus = {
 	configured: boolean;

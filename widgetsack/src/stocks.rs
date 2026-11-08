@@ -43,6 +43,17 @@ fn default_provider() -> String {
     "yahoo".to_string()
 }
 
+/// Fold any stored/typed provider string onto a known one. A String (not an enum) so a hand-edited
+/// junk value degrades to Yahoo instead of failing the whole file parse. See ADR slug
+/// `stocks-provider-cbr-binance`.
+pub(crate) fn normalize_provider(s: &str) -> &'static str {
+    if s.trim().eq_ignore_ascii_case("cbr-binance") {
+        "cbr-binance"
+    } else {
+        "yahoo"
+    }
+}
+
 /// Server-side stocks config (`plugins/stocks.json`). Yahoo needs no key, so nothing here is secret —
 /// but it still lives server-side because the fetch must (the webview CSP blocks external HTTP).
 /// `#[serde(default)]` everywhere so a partial file parses.
@@ -120,7 +131,7 @@ fn yahoo_chart_url(symbol: &str, interval: &str, range: &str) -> String {
 
 /// Percent change of `price` vs `prev_close`, or `None` when prev is missing / zero (avoids a /0 and a
 /// misleading ±∞ on a brand-new listing).
-fn change_pct(price: f64, prev_close: f64) -> Option<f64> {
+pub(crate) fn change_pct(price: f64, prev_close: f64) -> Option<f64> {
     if prev_close == 0.0 || !prev_close.is_finite() {
         None
     } else {
@@ -373,7 +384,12 @@ pub async fn run_stocks_client<R: Runtime>(app: AppHandle<R>, cfg: StocksConfig)
             .unwrap_or_else(|e| e.into_inner())
             .clear();
     }
-    let client = match http_client() {
+    let cbr = normalize_provider(&cfg.provider) == "cbr-binance";
+    let client = match if cbr {
+        crate::fork::stocks_cbr::provider_client()
+    } else {
+        http_client()
+    } {
         Ok(c) => c,
         Err(err) => {
             eprintln!("stocks: client build failed: {err}");
@@ -394,12 +410,7 @@ pub async fn run_stocks_client<R: Runtime>(app: AppHandle<R>, cfg: StocksConfig)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    if cfg.provider != "yahoo" {
-        eprintln!(
-            "stocks: provider '{}' is not implemented; using yahoo",
-            cfg.provider
-        );
-    }
+    let mut cbr_state = crate::fork::stocks_cbr::CbrState::default();
 
     // `idle` re-emits a fresh "connecting" when a ticker (re)mounts after an idle gap; `fails` drives
     // exponential backoff on consecutive fetch failures so a rate-limited / down provider isn't
@@ -441,6 +452,23 @@ pub async fn run_stocks_client<R: Runtime>(app: AppHandle<R>, cfg: StocksConfig)
             .unwrap_or_else(|e| e.into_inner())
             .extend(symbols.iter().cloned());
         for symbol in &symbols {
+            if cbr {
+                use crate::fork::stocks_cbr::{Quote, poll_symbol};
+                match poll_symbol(&client, &mut cbr_state, symbol, Instant::now(), now_ms()).await {
+                    Ok(q) => {
+                        // Unsupported / Cached are not failures: no error status, no backoff.
+                        fetched = true;
+                        let _t = timings.start("plugin.stocks");
+                        if let Quote::Samples(b) = q
+                            && !b.is_empty()
+                        {
+                            emit_batch(&app, &b);
+                        }
+                    }
+                    Err(e) => eprintln!("stocks: fetch {e}"),
+                }
+                continue;
+            }
             match fetch_chart(&client, symbol).await {
                 Ok(json) => {
                     fetched = true;
@@ -503,11 +531,7 @@ pub async fn save_stocks_config(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let cfg = StocksConfig {
-        provider: if provider.is_empty() {
-            default_provider()
-        } else {
-            provider
-        },
+        provider: normalize_provider(&provider).to_string(),
         symbols,
         poll_interval_secs: poll_seconds.clamp(MIN_INTERVAL, MAX_INTERVAL),
     };
@@ -523,19 +547,24 @@ pub async fn stocks_config_status<R: Runtime>(app: AppHandle<R>) -> Result<Stock
     let cfg = tokio::task::spawn_blocking(move || load_stocks_config(&app))
         .await
         .map_err(|e| e.to_string())??;
+    Ok(build_status(cfg))
+}
+
+/// Pure status builder: junk `provider` values in the file are normalised before the webview sees them.
+fn build_status(cfg: Option<StocksConfig>) -> StocksStatus {
     match cfg {
-        Some(cfg) => Ok(StocksStatus {
+        Some(cfg) => StocksStatus {
             configured: cfg.symbols.iter().any(|s| !s.trim().is_empty()),
-            provider: cfg.provider,
+            provider: normalize_provider(&cfg.provider).to_string(),
             symbols: cfg.symbols,
             poll_seconds: cfg.poll_interval_secs,
-        }),
-        None => Ok(StocksStatus {
+        },
+        None => StocksStatus {
             configured: false,
             provider: default_provider(),
             symbols: Vec::new(),
             poll_seconds: default_interval(),
-        }),
+        },
     }
 }
 
@@ -755,6 +784,30 @@ mod tests {
         let cfg: StocksConfig = serde_json::from_str(r#"{ "symbols": ["AAPL"] }"#).unwrap();
         assert_eq!(cfg.provider, "yahoo");
         assert_eq!(cfg.poll_interval_secs, 60);
+    }
+
+    #[test]
+    fn normalize_provider_accepts_cbr_binance_and_defaults_the_rest() {
+        assert_eq!(normalize_provider("cbr-binance"), "cbr-binance");
+        assert_eq!(normalize_provider(" CBR-Binance "), "cbr-binance");
+        assert_eq!(normalize_provider("yahoo"), "yahoo");
+        assert_eq!(normalize_provider(""), "yahoo");
+        assert_eq!(normalize_provider("bybit"), "yahoo");
+        // Junk in the file still parses; the status path normalises it.
+        let cfg: StocksConfig = serde_json::from_str(r#"{ "provider": "bybit" }"#).unwrap();
+        assert_eq!(normalize_provider(&cfg.provider), "yahoo");
+    }
+
+    #[test]
+    fn status_normalises_the_provider() {
+        let status = |json: &str| build_status(Some(serde_json::from_str(json).unwrap()));
+        assert_eq!(status(r#"{"provider":"bybit"}"#).provider, "yahoo");
+        assert_eq!(
+            status(r#"{"provider":"cbr-binance"}"#).provider,
+            "cbr-binance"
+        );
+        assert_eq!(status("{}").provider, "yahoo");
+        assert_eq!(build_status(None).provider, "yahoo");
     }
 
     #[test]

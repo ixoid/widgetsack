@@ -139,6 +139,34 @@ it('forwards the stored weather provider on a partial edit, and lets an explicit
 		decodeIntegrationRequest({ integration: 'weather', settings: { provider: 'banana' } })
 	).toThrow('Invalid setting: provider');
 });
+it('keeps the stored stocks provider when a save omits it, and lets an explicit one win', async () => {
+	const { tool, call } = setup();
+	const stored = statuses.stocks;
+	statuses.stocks = { ...stored, provider: 'cbr-binance' };
+	try {
+		await tool('studio_configure_integration', {
+			integration: 'stocks',
+			settings: { pollSeconds: 120 }
+		});
+	} finally {
+		statuses.stocks = stored;
+	}
+	expect(call).toHaveBeenCalledWith(
+		'save_stocks_config',
+		expect.objectContaining({ provider: 'cbr-binance', symbols: ['NVDA'], pollSeconds: 120 })
+	);
+	await tool('studio_configure_integration', {
+		integration: 'stocks',
+		settings: { provider: 'cbr-binance' }
+	});
+	expect(call).toHaveBeenCalledWith(
+		'save_stocks_config',
+		expect.objectContaining({ provider: 'cbr-binance' })
+	);
+	expect(() =>
+		decodeIntegrationRequest({ integration: 'stocks', settings: { provider: 'bybit' } })
+	).toThrow('Invalid setting: provider');
+});
 it('re-validates the stored unit word on a partial edit instead of rejecting it', async () => {
 	// The pane stores 'celsius' / 'fahrenheit'; the enum used to be ['C', 'F'], so any edit that
 	// left `unit` out re-validated the stored word and threw "Invalid setting: unit.".

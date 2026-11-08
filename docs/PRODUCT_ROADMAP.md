@@ -30,7 +30,7 @@
 ```
 /feature Add a second `stocks` provider `cbr-binance` (fork module widgetsack/src/fork/stocks_cbr.rs, selected in Plugins → Stocks like the weather provider switch) because Yahoo Finance does not answer from the owner's network (curl: timeout 10 s on every request, 2026-11-07). RUB pairs (`USDRUB`, `EURRUB`, any CBR code) come from the Bank of Russia daily feed — https://www.cbr-xml-daily.ru/daily_json.js (mirror of cbr.ru XML_daily; fields Value and Previous give "change vs previous close" exactly as the owner wants), polled at most every 30 min and cached by the Date field; crypto pairs (`BTCUSDT`, …) from Binance https://api.binance.com/api/v3/ticker/24hr (lastPrice, prevClosePrice, priceChangePercent; add a tiny intraday series from /api/v3/klines 5m so the sparkline works). Emit the same `stocks.<SYMBOL>.{price,change,changeAbs,prevClose,series}` ids so the stock Ticker meter needs no change; map the owner's three tickers: `USDRUB=X`→CBR USD, `EURRUB=X`→CBR EUR, `BTC-USD`→Binance BTCUSDT (accept both spellings). Timeouts 10 s, body caps, no keys, no secrets; pure mappers with fixture tests; ADR. Done when the three tickers on the overlay show a price and a coloured arrow.
 ```
-**Priority:** Phase 1 (the three tickers are already on the overlay and empty) · **Depends on:** none · **Est. size/mode:** M · DATA — new outbound hosts (cbr-xml-daily.ru, api.binance.com)
+**Priority:** Phase 1 · **Status:** ✅ done 2026-11-08 on `feat/T-1-cbr-binance-tickers` (run T-1-20261108-1046, ADR-004; owner skipped the architect step; live check on the dev overlay: three tickers show price + coloured arrow) · **Depends on:** none · **Est. size/mode:** M · DATA — new outbound hosts (cbr-xml-daily.ru, api.binance.com)
 **Reachability probe 2026-11-07 (curl from the owner's machine):** cbr.ru 200 / 0.49 s, cbr-xml-daily.ru 200 / 0.26 s, api.binance.com 200 / 0.35 s, api.bybit.com 200, okx.com 200, api.coingecko.com 200; query1.finance.yahoo.com — timeout.
 
 ## Vector H — Hardware sensors (owner request 2026-11-07)
@@ -80,6 +80,6 @@
 1. W-1 — done, in `main`.
 2. S-1 and H-1 — done, in `main`.
 3. W-2, K-1 and the LOW backlog items — done, in `main`.
-3a. T-1 — ticker provider reachable from Russia; the three tickers are on the overlay and empty until it lands.
+3a. T-1 — done 2026-11-08 (branch `feat/T-1-cbr-binance-tickers`, pending merge).
 4. C-1 — after S-1; needs the owner at the keyboard (CSP decision, real camera, go2rtc).
 5. W-3, then P-1.

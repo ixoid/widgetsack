@@ -69,7 +69,11 @@ export const INTEGRATIONS: Integration[] = [
 		status: COMMANDS.stocksConfigStatus,
 		save: COMMANDS.saveStocksConfig,
 		connect: COMMANDS.stocksConnect,
-		fields: { provider: string, symbols: { type: 'array' }, pollSeconds: polling }
+		fields: {
+			provider: { type: 'string', enum: ['yahoo', 'cbr-binance'] },
+			symbols: { type: 'array' },
+			pollSeconds: polling
+		}
 	},
 	{
 		id: 'weather',
