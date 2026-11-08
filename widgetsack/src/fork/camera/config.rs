@@ -274,7 +274,8 @@ pub fn merge(
     previous: Option<&CameraConfig>,
     input: SaveInput,
 ) -> Result<(CameraConfig, SaveResult), String> {
-    let split = split_url(&input.url)?;
+    // A pasted address often carries a trailing newline or space; that is not an error.
+    let split = split_url(input.url.trim())?;
     let address = validate_address(&split.bare_url)?;
 
     let explicit_user = input
@@ -542,6 +543,14 @@ mod tests {
             password: None,
             clear_credentials: false,
         }
+    }
+
+    #[test]
+    fn merge_trims_surrounding_whitespace_from_a_pasted_address() {
+        let (cfg, _) = merge(None, input("  rtsp://10.0.0.2:8554/ch2\r\n")).unwrap();
+        assert_eq!(cfg.url, "rtsp://10.0.0.2:8554/ch2");
+        // Positive control: whitespace INSIDE the address is still rejected.
+        assert!(merge(None, input("rtsp://10.0.0 .2:8554/ch2")).is_err());
     }
 
     fn with_creds(url: &str, user: &str, pass: &str) -> CameraConfig {
