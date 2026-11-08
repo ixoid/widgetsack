@@ -1,9 +1,9 @@
 # ADR-006: Notification feed — source choice (A1 WinRT listener, unpackaged, probe-gated)
 
-- **Status:** Proposed (probe-gated; owner confirm pending — coordinator interim record 2026-11-08)
+- **Status:** Accepted — the owner accepted the A1 rule at the STEP 4 cost gate (2026-11-08, «Принять A1»); the live probe returned **GO** the same day (owner grant «да»; evidence: run bus `N-1-20261108-1637/probe-record.md`): no prompt, `allowed` directly on build 10.0.26200; 36 → 39 notifications with 3 self-fired synthetic toasts; grant persisted across a process restart without re-prompt. Recovery command if the feed ever goes silently empty: `cargo test probe_live_listener -- --ignored --nocapture` (status kind + count + app names only, never bodies).
 - **Date:** 2026-11-08
-- **Deciders:** coordinator (working premise, owner dismissed the source question), CTO review
-  (interface contract), architect (this record); owner confirm at STEP 4
+- **Deciders:** owner (A1 rule + probe grant, STEP 4 cost gate), CTO review (interface contract),
+  architect (this record)
 - **Feature:** N-1 `notifyfeed` (docs/PRODUCT_ROADMAP.md Vector N)
 
 ## Context

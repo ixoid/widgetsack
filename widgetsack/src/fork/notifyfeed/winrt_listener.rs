@@ -184,6 +184,15 @@ pub use winrt::WinrtListener;
 mod tests {
     use super::*;
 
+    // The probe harness below (windows-only) needs the raw listener API; the mapper tests above
+    // stay platform-free.
+    #[cfg(target_os = "windows")]
+    use windows::UI::Notifications::Management::UserNotificationListener;
+    #[cfg(target_os = "windows")]
+    use windows::UI::Notifications::Management::UserNotificationListenerAccessStatus;
+    #[cfg(target_os = "windows")]
+    use windows::UI::Notifications::NotificationKinds;
+
     // 2026-01-01T00:00:00Z = 1_767_225_600_000 ms; UniversalTime = (1_767_225_600 + 11_644_473_600) × 10⁷.
     const T_2026_01_01: i64 = 134_116_992_000_000_000;
     const T_1970_01_01: i64 = 116_444_736_000_000_000;
@@ -262,5 +271,122 @@ mod tests {
         assert_eq!(raw.app, "");
         assert_eq!(raw.app_key, "");
         assert_eq!(raw.title.as_deref(), Some("t"));
+    }
+
+    // ---- persistent probe harness (ADR `notifyfeed-source`) ----
+    //
+    // Doubles as the feature's one-time probe and as the documented recovery command for a
+    // suspected silent-death build: rerun manually with
+    // `cargo test probe_live_listener -- --ignored` (add `-- --ignored --nocapture` to see the
+    // evidence lines). It reads the REAL Action Center of this machine into this process — that
+    // is why it stays #[ignore]d and may only run with the owner's word (project boundary).
+    // Evidence lines carry the `notifyfeed-probe:` prefix and show app names and counts ONLY —
+    // never titles or bodies. Every failure path is a kind word; no WinRT error is ever formatted.
+
+    /// The access status as a stable kind word (no Debug formatting of the WinRT value).
+    #[cfg(target_os = "windows")]
+    fn access_kind(status: UserNotificationListenerAccessStatus) -> &'static str {
+        match status {
+            UserNotificationListenerAccessStatus::Allowed => "allowed",
+            UserNotificationListenerAccessStatus::Denied => "denied",
+            UserNotificationListenerAccessStatus::Unspecified => "unspecified",
+            // The WinRT enum is a bare i32 newtype: an OS update can return a value with no name.
+            // Report it as a kind word; the != Allowed check below still fails the probe.
+            _ => "other",
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[ignore = "live probe: reads the owner's Action Center into this process; run manually per ADR notifyfeed-source — cargo test probe_live_listener -- --ignored"]
+    fn probe_live_listener() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        // Run blocking WinRT work on a spawned thread behind a wall-clock cap: `Ok(..)` carries
+        // the work's own result, `Err(())` means the cap fired. A timed-out thread stays parked
+        // until the process exits — the "must report, not hang" behavior the OS access prompt
+        // needs (a human may never click it).
+        fn with_cap<T: Send + 'static>(
+            seconds: u64,
+            work: impl FnOnce() -> Result<T, &'static str> + Send + 'static,
+        ) -> Result<Result<T, &'static str>, ()> {
+            let (tx, rx) = mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(work());
+            });
+            rx.recv_timeout(Duration::from_secs(seconds))
+                .map_err(|_| ())
+        }
+
+        let listener = UserNotificationListener::Current()
+            .map_err(|_| ())
+            .expect("notifyfeed-probe: listener unavailable");
+
+        // 1. RequestAccessAsync — the documented OS-prompt trigger, run ONCE. The prompt may
+        //    wait for the owner's click, hence the 90 s cap.
+        let probe = listener.clone();
+        let access = with_cap(90, move || {
+            probe
+                .RequestAccessAsync()
+                .map_err(|_| "access request failed")?
+                .join()
+                .map_err(|_| "access request join failed")
+        });
+        let access = match access {
+            // A prompt timeout is EVIDENCE (the prompt is up, waiting for the owner), not a FAIL.
+            Err(()) => {
+                println!("notifyfeed-probe: prompt-timeout");
+                println!("notifyfeed-probe: done");
+                return;
+            }
+            Ok(Err(kind)) => panic!("notifyfeed-probe: {kind}"),
+            Ok(Ok(status)) => status,
+        };
+        println!("notifyfeed-probe: access {}", access_kind(access));
+        if access != UserNotificationListenerAccessStatus::Allowed {
+            panic!(
+                "notifyfeed-probe: access {} (probe FAIL)",
+                access_kind(access)
+            );
+        }
+
+        // 2. Read the Toast snapshot: the total count plus at most the first 10 app display
+        //    names (names only). A healthy read returns in milliseconds; hitting the 30 s cap
+        //    means the read never completed.
+        let probe = listener.clone();
+        let snapshot = with_cap(30, move || {
+            let view = probe
+                .GetNotificationsAsync(NotificationKinds::Toast)
+                .map_err(|_| "read request failed")?
+                .join()
+                .map_err(|_| "read join failed")?;
+            let size = view.Size().map_err(|_| "size read failed")?;
+            let mut names: Vec<String> = Vec::new();
+            for i in 0..size {
+                let Ok(item) = view.GetAt(i) else {
+                    continue;
+                };
+                let name = item
+                    .AppInfo()
+                    .ok()
+                    .and_then(|app| app.DisplayInfo().ok())
+                    .and_then(|info| info.DisplayName().ok())
+                    .map(|name| name.to_string())
+                    .unwrap_or_else(|| "(no app name)".into());
+                if names.len() < 10 {
+                    names.push(name);
+                }
+            }
+            Ok((size, names))
+        });
+        let (size, names) = match snapshot {
+            Ok(Ok(read)) => read,
+            Ok(Err(kind)) => panic!("notifyfeed-probe: {kind}"),
+            Err(()) => panic!("notifyfeed-probe: read timed out"),
+        };
+        println!("notifyfeed-probe: notifications {size}");
+        println!("notifyfeed-probe: apps {}", names.join(", "));
+        println!("notifyfeed-probe: done");
     }
 }
