@@ -44,8 +44,12 @@ export type CanvasLike = {
 	} | null;
 };
 
-/** More queued chunks than this: drop deltas until the next keyframe rather than fall behind. */
-export const QUEUE_LIMIT = 8;
+/**
+ * More queued chunks than this: drop deltas until the next keyframe rather than fall behind.
+ * ~1.1 s of an 18 fps stream — absorbs Wi-Fi retransmit bursts (RTSP/TCP over a two-hop Wi-Fi
+ * delivers frames in bursts); owner decision 2026-11-08: smoothness over sub-second latency.
+ */
+export const QUEUE_LIMIT = 20;
 export const ERROR_BURST = 3;
 export const ERROR_WINDOW_MS = 10_000;
 /** After an error burst, wait this long before a keyframe may rebuild the decoder. */
