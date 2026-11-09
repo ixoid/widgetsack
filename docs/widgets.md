@@ -959,3 +959,18 @@ Windows toast notifications that arrived while you were away or in a game — ap
 | `maxRows` | number | 20 | min 1, max 100, step 1 | how many notifications to list (newest first; older ones still age out by the plugin depth) |
 | `showBody` | toggle | true |  | show the message body under each title |
 | `color` | color |  |  | unread edge / time colour (blank = theme accent) |
+
+### Forecast — `weatherforecast`
+
+Current weather, a strip of the next hours and the coming days with high / low, in Russian or English.
+
+- **Default size:** 312×280
+
+| key | type | default | options / range | description |
+| --- | --- | --- | --- | --- |
+| `days` | number | 5 | min 1, max 7, step 1 | how many day rows to show (1–7) |
+| `hours` | number | 12 | min 0, max 24, step 1 | how many hours in the strip (0 = hide it; more than 12 wrap to a second row) |
+| `locale` | select | "ru" | `ru`, `en` | language of the condition, weekday and month labels |
+| `showCurrent` | toggle | true |  | show the big current temperature with its condition |
+| `showDetail` | toggle | true |  | show the feels-like, humidity and wind column beside the temperature |
+| `color` | color |  |  | current-hour and today colour (blank = theme accent) |
