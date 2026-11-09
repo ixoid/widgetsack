@@ -217,23 +217,24 @@
                   "child": {
                     "children": [
                       {
-                        "basis": 204,
-                        "id": "weather-slot",
+                        "basis": 280,
+                        "id": "forecast-slot",
                         "unit": {
                           "config": {
-                            "forecastDays": 5,
-                            "showDetail": true,
-                            "showHiLo": false
+                            "days": 5,
+                            "hours": 12,
+                            "locale": "ru",
+                            "showCurrent": true,
+                            "showDetail": true
                           },
-                          "css": "--wx-temp-size: 2.1em; --wx-icon-size: 2.4em; --wx-cond-size: 13px; --wx-detail-size: 12px; --wx-gap: 3px; justify-content: flex-start; .wx-forecast { flex-direction: column; gap: 0; margin-top: 6px; } .wx-day { flex-direction: row; align-items: center; text-align: left; gap: 10px; padding: 1px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); } .wx-day:first-child { border-top: 0; } .wx-day-label { flex: 0 0 64px; text-align: left; font-size: 12px; line-height: 20px; letter-spacing: 0.04em; } .wx-day-icon { flex: 0 0 30px; text-align: left; font-size: 1.15em; line-height: 1; } .wx-day-hilo { flex: 0 0 auto; flex-wrap: nowrap; gap: 10px; margin-left: 6px; font-size: 15px; line-height: 20px; } .wx-day-hi { font-weight: 700; color: var(--np-fg); } .wx-day-hi::before { content: \"↑ \"; font-weight: 400; color: var(--np-accent); } .wx-day-lo { color: var(--np-label); } .wx-day-lo::before { content: \"↓ \"; }",
-                          "id": "weather",
+                          "id": "forecast",
                           "rect": {
-                            "h": 204,
+                            "h": 280,
                             "w": 312,
                             "x": 0,
                             "y": 0
                           },
-                          "type": "weather"
+                          "type": "weatherforecast"
                         }
                       }
                     ],
@@ -247,7 +248,7 @@
                   "kind": "group",
                   "name": "Weather",
                   "size": {
-                    "h": 236,
+                    "h": 308,
                     "w": 340
                   }
                 }
