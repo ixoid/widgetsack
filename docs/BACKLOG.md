@@ -104,7 +104,7 @@ or it is blind.
 - **Found by:** owner (2026-11-08)
 - **Feature:** owner desktop layout
 - **Date:** 2026-11-08
-- **Status:** open
+- **Status:** closed 2026-11-09 — owner confirmed the CPU card reads live HWiNFO values and asked for the swap; `scripts/snapshot-layout.ps1` → 4bd17f4, CPU slots reordered to Load → Temp → MHz in the example (2408ee7), live `widgets.json` overwritten from the example with the owner's explicit «да» (byte-identical to the snapshot except the swap). Takes effect at the next overlay start; visual check on the screen is the owner's.
 - **Description:** «упорядочить иконки в цпу и гпу одинаково. сейчас там температура и герцовка в разных частях — визуально сложно быстро показания понять». Overlay 2026-11-08: GPU card reads Load → Temp → Clock, CPU card reads Load → MHz → Temp. Same metric should sit in the same position on both cards.
 - **Fix:** layout-only change (no code): after `scripts/snapshot-layout.ps1`, reorder the CPU card gauges to Load → Temp → Clock (GPU order; temperature next to load as the "health" pair) or the GPU card to match the CPU — owner picks in Studio or the coordinator edits the example + the owner confirms copying it over the live file (needs an explicit «да»). Commit `chore(layout): …`.
 - **Check:** overlay screenshot (`CopyFromScreen(1406, 2160, …, 2560×720)`) shows Temp and Clock gauges in the same column position on both cards; `git diff` of the example layout touches only the gauge order inside the two cards.

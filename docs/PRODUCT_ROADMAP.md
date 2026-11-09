@@ -47,7 +47,7 @@
 ```
 /feature Server check (brief stage 1): a Rust fork source widgetsack/src/fork/server_check.rs (IntegrationTask pattern like agenda.rs) with targets configured in Plugins → Server check (name, host, kind icmp|tcp|http, port/url, expected status or keyword, interval default 30 s, timeout), checks via the existing ICMP helper (share it with ping.rs), tokio TcpStream connect with timeout, and the service_health client for http; emits srv.<id>.up|ms|status|lastDown and srv.status; a `servercheck` fork widget renders one card with N rows (dot, name, latency, 20-sample sparkline, "down since"). Optional Windows toast on up→down behind a toggle (new tauri-plugin-notification; ADR). Done when 3 targets show status and latency on the overlay and a pulled target flips within one interval. See docs/dev/fork-stage0-plan.md § Stage 1 for open choices.
 ```
-**Priority:** Phase 1 · **Status:** ✅ done 2026-11-07, merged into `main` (f53c9f5; lane run S-1-20261107-2105, ADR-002; toast deferred; live-overlay check with three real targets still owed by the owner) · **Depends on:** none · **Est. size/mode:** M · DATA
+**Priority:** Phase 1 · **Status:** ✅ done 2026-11-07, merged into `main` (f53c9f5; lane run S-1-20261107-2105, ADR-002; toast deferred; 2026-11-09 the owner's VDS replaced the Cloudflare DNS placeholder — TCP 22 in `plugins/server-check.json`, written with the owner's «да», address kept out of git; card check after the next overlay start) · **Depends on:** none · **Est. size/mode:** M · DATA
 
 ## Vector C — Cameras (brief stage 2)
 
