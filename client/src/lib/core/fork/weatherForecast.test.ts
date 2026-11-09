@@ -4,6 +4,7 @@ import {
 	conditionLabel,
 	dayLabel,
 	dayCount,
+	forecastScale,
 	dayRows,
 	forecastSensors,
 	forecastText,
@@ -45,6 +46,15 @@ describe('hourCount / dayCount (shared by the sensors map and the meter)', () =>
 			expect(hourCount(bad)).toBe(12);
 			expect(dayCount(bad)).toBe(5);
 		}
+	});
+});
+
+describe('forecastScale (secondary text multiplier)', () => {
+	it('passes 1..2.5 through, clamps outside and falls back to 1 for junk', () => {
+		expect([1, 1.3, 2.5].map(forecastScale)).toEqual([1, 1.3, 2.5]);
+		expect([0, 0.5, -2].map(forecastScale)).toEqual([1, 1, 1]);
+		expect(forecastScale(9)).toBe(2.5);
+		for (const bad of [null, undefined, NaN, '1.5', Infinity]) expect(forecastScale(bad)).toBe(1);
 	});
 });
 

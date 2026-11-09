@@ -189,6 +189,21 @@ describe('WeatherForecast meter', () => {
 		);
 	});
 
+	it('sets --wf-scale only for a valid multiplier above 1 (the CSS default is 1)', () => {
+		const plain = render(<WeatherForecast sensors={base} />);
+		expect((plain.container.firstChild as HTMLElement).style.getPropertyValue('--wf-scale')).toBe(
+			''
+		);
+		const big = render(<WeatherForecast sensors={base} scale={1.4} />);
+		expect((big.container.firstChild as HTMLElement).style.getPropertyValue('--wf-scale')).toBe(
+			'1.4'
+		);
+		const junk = render(<WeatherForecast sensors={base} scale={NaN} />);
+		expect((junk.container.firstChild as HTMLElement).style.getPropertyValue('--wf-scale')).toBe(
+			''
+		);
+	});
+
 	it('falls back to ru for an unknown locale value', () => {
 		const { container } = render(<WeatherForecast sensors={base} locale="xx" />);
 		expect(container.querySelector('.wf-c')?.textContent).toBe('Пасмурно');

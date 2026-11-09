@@ -27,7 +27,14 @@ export const registerWeatherForecastPlugin = (): void =>
 					description:
 						'Current weather, a strip of the next hours and the coming days with high / low, in Russian or English.',
 					defaultSize: { w: 312, h: 280 },
-					defaultConfig: { days: 5, hours: 12, locale: 'ru', showCurrent: true, showDetail: true },
+					defaultConfig: {
+						days: 5,
+						hours: 12,
+						locale: 'ru',
+						showCurrent: true,
+						showDetail: true,
+						scale: 1
+					},
 					configFields: [
 						{
 							key: 'days',
@@ -70,6 +77,16 @@ export const registerWeatherForecastPlugin = (): void =>
 							kind: 'toggle',
 							group: 'Appearance',
 							help: 'show the feels-like, humidity and wind column beside the temperature'
+						},
+						{
+							key: 'scale',
+							label: 'text size',
+							kind: 'number',
+							min: 1,
+							max: 2.5,
+							step: 0.1,
+							group: 'Appearance',
+							help: 'multiplier for the hour strip, day rows and detail text (1 = default; the big temperature stays as is — widen the widget for the strip)'
 						},
 						{
 							key: 'color',

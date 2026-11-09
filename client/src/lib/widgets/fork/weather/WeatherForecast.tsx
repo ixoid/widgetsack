@@ -10,6 +10,7 @@ import {
 	conditionLabel,
 	dayCount,
 	dayRows,
+	forecastScale,
 	forecastText,
 	glyphFor,
 	hourCount,
@@ -33,6 +34,7 @@ type Props = {
 	showCurrent?: boolean;
 	showDetail?: boolean;
 	color?: string;
+	scale?: number;
 };
 
 const scalar = (s?: SensorState): number | null =>
@@ -47,7 +49,8 @@ export default function WeatherForecast({
 	locale: rawLocale = 'ru',
 	showCurrent = true,
 	showDetail = true,
-	color
+	color,
+	scale
 }: Props) {
 	const now = useNow(60_000);
 	const locale = normalizeLocale(rawLocale);
@@ -100,7 +103,13 @@ export default function WeatherForecast({
 	const apparent = scalar(sensors.apparent);
 	const humidity = scalar(sensors.humidity);
 	const wind = scalar(sensors.wind);
-	const vars = color ? ({ '--wf-accent': color } as CSSProperties) : undefined;
+	// Inline custom properties only when they differ from the CSS defaults, so a stock-looking card
+	// carries no style attribute at all.
+	const scaled = forecastScale(scale);
+	const vars = {
+		...(color ? { '--wf-accent': color } : {}),
+		...(scaled !== 1 ? { '--wf-scale': String(scaled) } : {})
+	} as CSSProperties;
 
 	return (
 		<div className="wf np-weatherforecast" style={vars}>
