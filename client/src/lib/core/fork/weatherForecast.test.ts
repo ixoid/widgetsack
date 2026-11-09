@@ -3,9 +3,11 @@ import {
 	anchorDate,
 	conditionLabel,
 	dayLabel,
+	dayCount,
 	dayRows,
 	forecastSensors,
 	forecastText,
+	hourCount,
 	isDayFromSun,
 	localHourKey,
 	normalizeLocale,
@@ -32,6 +34,17 @@ describe('normalizeLocale', () => {
 		expect(normalizeLocale('ru')).toBe('ru');
 		expect(normalizeLocale('de')).toBe('ru');
 		expect(normalizeLocale(undefined)).toBe('ru');
+	});
+});
+
+describe('hourCount / dayCount (shared by the sensors map and the meter)', () => {
+	it('clamp numbers and fall back to the defaults for anything else', () => {
+		expect([-3, 0, 7.9, 99].map(hourCount)).toEqual([0, 0, 7, 24]);
+		expect([-3, 0, 3.9, 99].map(dayCount)).toEqual([1, 1, 3, 7]);
+		for (const bad of [null, undefined, Number.NaN, Infinity, '4', {}]) {
+			expect(hourCount(bad)).toBe(12);
+			expect(dayCount(bad)).toBe(5);
+		}
 	});
 });
 
@@ -237,6 +250,16 @@ describe('dayLabel (explicit locale, pinned strings)', () => {
 		expect(dayLabel('2026-11-10', today, 'ru')).toEqual({ name: 'Вт', sub: '10 ноя' });
 		expect(dayLabel('2026-05-10', today, 'ru').sub).toBe('10 мая');
 		expect(dayLabel('2026-09-10', today, 'ru').sub).toBe('10 сен');
+	});
+	it('cuts the month to 3 letters without a dot in every month, ru and en', () => {
+		const ru = 'янв фев мар апр мая июн июл авг сен окт ноя дек'.split(' ');
+		const en = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ');
+		const months = Array.from(
+			{ length: 12 },
+			(_, m) => `2026-${String(m + 1).padStart(2, '0')}-15`
+		);
+		expect(months.map((d) => dayLabel(d, today, 'ru').sub)).toEqual(ru.map((m) => `15 ${m}`));
+		expect(months.map((d) => dayLabel(d, today, 'en').sub)).toEqual(en.map((m) => `15 ${m}`));
 	});
 	it('en', () => {
 		expect(dayLabel('2026-11-10', today, 'en')).toEqual({ name: 'Tue', sub: '10 Nov' });

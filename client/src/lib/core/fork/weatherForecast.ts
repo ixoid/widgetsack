@@ -13,6 +13,11 @@ const clampInt = (v: unknown, lo: number, hi: number, fallback: number): number 
 		? Math.max(lo, Math.min(hi, Math.floor(v)))
 		: fallback;
 
+/** Shared by the sensors map and the meter, so a cleared Studio field (null/NaN) subscribes and
+ * renders the same number of cells: the defaults, not zero. */
+export const hourCount = (v: unknown): number => clampInt(v, 0, 24, 12);
+export const dayCount = (v: unknown): number => clampInt(v, 1, 7, 5);
+
 /** The `sensors` map the plugin meta hands to WidgetHost. `rise`/`set` are always subscribed: the
  * client cannot tell which provider is active, and on met.no those ids simply never arrive. */
 export function forecastSensors(config: Record<string, unknown>): Record<string, string> {
@@ -30,13 +35,13 @@ export function forecastSensors(config: Record<string, unknown>): Record<string,
 		// Always on: the day rows are anchored to the date of hour 0, even when the strip is hidden.
 		hour0time: 'weather.hour.0.time'
 	};
-	const days = clampInt(config?.days, 1, 7, 5);
+	const days = dayCount(config?.days);
 	for (let i = 0; i < days; i++) {
 		map[`day${i}high`] = `weather.day.${i}.high`;
 		map[`day${i}low`] = `weather.day.${i}.low`;
 		map[`day${i}code`] = `weather.day.${i}.code`;
 	}
-	const hours = clampInt(config?.hours, 0, 24, 12);
+	const hours = hourCount(config?.hours);
 	for (let i = 0; i < hours; i++) {
 		map[`hour${i}time`] = `weather.hour.${i}.time`;
 		map[`hour${i}temp`] = `weather.hour.${i}.temp`;

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import WeatherForecast from './WeatherForecast';
+import { forecastSensors } from '../../../core/fork/weatherForecast';
 import type { SensorState } from '../../../core/telemetry';
 
 // Local-time clock, so the meter's local hour key is 2026-11-09T07:00 in any machine zone.
@@ -191,5 +192,75 @@ describe('WeatherForecast meter', () => {
 	it('falls back to ru for an unknown locale value', () => {
 		const { container } = render(<WeatherForecast sensors={base} locale="xx" />);
 		expect(container.querySelector('.wf-c')?.textContent).toBe('Пасмурно');
+	});
+
+	it('renders as many hour cells as forecastSensors subscribes for a cleared hours field', () => {
+		// 24 hours of data from 07:00; the strip must follow the subscribed count (12), not collapse.
+		const many: Sensors = { ...base };
+		for (let i = 0; i < 24; i++) {
+			const d = i < 17 ? '09' : '10';
+			many[`hour${i}time`] = txt(`2026-11-${d}T${String((7 + i) % 24).padStart(2, '0')}:00`);
+		}
+		for (const bad of [null, Number.NaN, 'x']) {
+			const subscribed = Object.keys(forecastSensors({ hours: bad })).filter((k) =>
+				k.endsWith('time')
+			);
+			const { container } = render(
+				<WeatherForecast sensors={many} hours={bad as unknown as number} />
+			);
+			expect(q(container, 'hour')).toHaveLength(subscribed.length);
+			expect(q(container, 'hour')).toHaveLength(12);
+			cleanup();
+		}
+	});
+
+	it('renders as many day rows as forecastSensors subscribes for a cleared days field', () => {
+		const sensors: Sensors = { ...base, ...daySensors(7), hour0time: txt('2026-11-09T07:00') };
+		for (const bad of [null, Number.NaN, 'x']) {
+			const subscribed = Object.keys(forecastSensors({ days: bad })).filter((k) =>
+				k.endsWith('high')
+			);
+			const { container } = render(
+				<WeatherForecast sensors={sensors} days={bad as unknown as number} />
+			);
+			expect(q(container, 'day')).toHaveLength(subscribed.length);
+			expect(q(container, 'day')).toHaveLength(5);
+			cleanup();
+		}
+	});
+
+	it('shows exactly the newer poll prefix when an older poll left a longer tail in the hub', () => {
+		// 07:00 poll wrote hour.0..23 = 07:00..06:00(+1d); the 08:00 poll rewrote hour.0..22 = 08:00..06:00
+		// and left hour.23 (06:00, stale) behind: it is not newer than hour.22, so the run ends there.
+		const sensors: Sensors = { ...base };
+		const put = (i: number, h: number, day: string, temp: number) => {
+			sensors[`hour${i}time`] = txt(`2026-11-${day}T${String(h).padStart(2, '0')}:00`);
+			sensors[`hour${i}temp`] = num(temp);
+		};
+		for (let i = 0; i < 24; i++) put(i, (7 + i) % 24, i < 17 ? '09' : '10', 100 + i);
+		for (let i = 0; i < 23; i++) put(i, (8 + i) % 24, i < 16 ? '09' : '10', i);
+		const { container } = render(<WeatherForecast sensors={sensors} hours={24} />);
+		const cells = Array.from(q(container, 'hour'));
+		expect(cells).toHaveLength(23);
+		expect(cells[0].querySelector('.wf-hh')?.textContent).toBe('08');
+		expect(cells[0].classList.contains('now')).toBe(false);
+		expect(cells[22].querySelector('.wf-hh')?.textContent).toBe('06');
+		expect(cells[22].querySelector('.wf-ht')?.textContent).toBe('22°');
+	});
+
+	it('applies the night glyph rule to the current block: moon for 0/1/2, own glyph otherwise', () => {
+		const iconOf = (code: number, isDay: number): string | null | undefined => {
+			const { container } = render(
+				<WeatherForecast sensors={{ code: num(code), is_day: num(isDay) }} />
+			);
+			const name = container.querySelector('[data-part="now"] svg')?.getAttribute('data-icon');
+			cleanup();
+			return name;
+		};
+		expect([0, 1, 2].map((c) => iconOf(c, 0))).toEqual(['moon', 'moon', 'moon']);
+		expect(iconOf(3, 0)).toBe('cloud');
+		expect(iconOf(61, 0)).toBe('rain');
+		expect(iconOf(2, 1)).toBe('weather');
+		expect(iconOf(0, 1)).toBe('sun');
 	});
 });

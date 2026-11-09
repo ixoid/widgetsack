@@ -8,9 +8,11 @@ import type { SensorState } from '../../../core/telemetry';
 import {
 	anchorDate,
 	conditionLabel,
+	dayCount,
 	dayRows,
 	forecastText,
 	glyphFor,
+	hourCount,
 	isDayFromSun,
 	localHourKey,
 	normalizeLocale,
@@ -37,8 +39,6 @@ const scalar = (s?: SensorState): number | null =>
 	s?.value && s.value.kind === 'scalar' ? s.value.value : null;
 const textOf = (s?: SensorState): string | null =>
 	s?.value && s.value.kind === 'text' ? s.value.value : null;
-const count = (n: number, lo: number, hi: number): number =>
-	Math.max(lo, Math.min(hi, Math.floor(n)));
 
 export default function WeatherForecast({
 	sensors = {},
@@ -71,7 +71,7 @@ export default function WeatherForecast({
 	const nowKey = localHourKey(now, -new Date(now).getTimezoneOffset());
 	const todayDate = nowKey.slice(0, 10);
 	const sun = { rise: textOf(sensors.rise), set: textOf(sensors.set) };
-	const nHours = count(hours, 0, 24);
+	const nHours = hourCount(hours);
 	const raw: RawHour[] = [];
 	for (let i = 0; i < nHours; i++) {
 		raw.push({
@@ -84,7 +84,7 @@ export default function WeatherForecast({
 	const cells = pickHours(raw, nowKey, nHours, sun, locale);
 
 	const rawDays: RawDay[] = [];
-	for (let i = 0; i < count(days, 1, 7); i++) {
+	for (let i = 0; i < dayCount(days); i++) {
 		rawDays.push({
 			high: scalar(sensors[`day${i}high`]),
 			low: scalar(sensors[`day${i}low`]),

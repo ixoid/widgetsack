@@ -210,6 +210,30 @@ mod tests {
     }
 
     #[test]
+    fn time_longer_than_the_value_arrays_emits_time_without_temp() {
+        let mut h = hourly(4);
+        h["temperature_2m"] = json!([0, 1]); // shorter than `time`
+        let s = open_meteo_hours(&body(json!({ "time": "2026-06-14T00:00" }), h), 1);
+        assert_eq!(val(&s, "weather.hour.3.time").unwrap(), "2026-06-14T03:00");
+        assert!(find(&s, "weather.hour.2.temp").is_none());
+        assert!(find(&s, "weather.hour.3.temp").is_none());
+        assert_eq!(val(&s, "weather.hour.1.temp").unwrap(), 1.0);
+    }
+
+    #[test]
+    fn non_array_hourly_emits_nothing() {
+        let current = json!({ "time": "2026-06-14T00:00" });
+        for hourly in [
+            json!("x"),
+            json!(null),
+            json!([1, 2]),
+            json!({ "time": "x" }),
+        ] {
+            assert!(open_meteo_hours(&body(current.clone(), hourly), 1).is_empty());
+        }
+    }
+
+    #[test]
     fn push_hour_skips_non_finite_values_and_orders_time_first() {
         let mut out = Vec::new();
         push_hour(
