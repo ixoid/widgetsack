@@ -53,8 +53,12 @@ the fork's one deviation from the stock `weatherInfo` table, applied in the clie
 - **Positive:** both providers feed the strip from the body already fetched; 96 extra samples per
   poll (~6 KB); no trust-surface change.
 - **Negative / trade-offs:** the past-hour drop and the met.no time text assume the weather location
-  shares the PC's zone (same assumption as ADR-001 day cutting). Open-Meteo local strings are
-  ambiguous for one hour at a DST fall-back (Moscow has no DST). met.no only suffixes clear / fair /
+  shares the PC's zone (same assumption as ADR-001 day cutting). At a DST fall-back Open-Meteo
+  repeats one local string (`02:00`, `02:00`); the client's strictly-increasing rule then cuts the
+  strip at the repeat for the polls that span it, i.e. fewer hours for up to a day, never wrong
+  ones (Moscow has no DST). In half-hour zones the met.no `hour.0` slot (`…T04:30` at 05:10 local)
+  is dropped by the past-hour rule, so the strip starts at the next slot; accepted, not the owner's
+  zone. met.no only suffixes clear / fair /
   partly-cloudy / showers symbols, so overcast, rain, fog and snow hours usually have no `is_day`;
   with the stock `weatherInfo` glyphs that changes nothing (only codes 0-2 have a night glyph).
 - **Follow-ups:** met.no Sunrise 3.0 (ADR-001) would let both providers emit `weather.sun.*`.
