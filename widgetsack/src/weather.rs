@@ -68,7 +68,10 @@ fn pick_samples(
     if normalize_provider(provider) == "met-no" {
         crate::fork::weather_metno::metno_to_samples(body, letter, ts_ms, utc_offset_secs)
     } else {
-        weather_to_samples(body, letter, ts_ms)
+        let mut s = weather_to_samples(body, letter, ts_ms);
+        // Appended here, not inside the upstream mapper, to keep upstream tests and merges clean.
+        s.extend(crate::fork::weather_hourly::open_meteo_hours(body, ts_ms));
+        s
     }
 }
 
@@ -157,7 +160,8 @@ fn open_meteo_url(lat: f64, lon: f64, unit: &str) -> String {
         "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}\
          &current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,uv_index\
          &daily=temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset&temperature_unit={temp_unit}\
-         &wind_speed_unit={wind_unit}&timezone=auto&forecast_days={FORECAST_DAYS}"
+         &wind_speed_unit={wind_unit}&timezone=auto&forecast_days={FORECAST_DAYS}\
+         &hourly=temperature_2m,weather_code,is_day&forecast_hours=24"
     )
 }
 
@@ -546,6 +550,9 @@ mod tests {
         // Multi-day forecast: a week of daily highs/lows + codes.
         assert!(c.contains("forecast_days=7"));
         assert!(c.contains("weather_code"));
+        // Hourly strip for the forecast widget; forecast_hours must not shrink the daily block.
+        assert!(c.contains("&hourly=temperature_2m,weather_code,is_day"));
+        assert!(c.contains("&forecast_hours=24"));
         let f = open_meteo_url(40.0, -74.0, "Fahrenheit");
         assert!(f.contains("temperature_unit=fahrenheit"));
         assert!(f.contains("wind_speed_unit=mph"));
@@ -791,6 +798,23 @@ mod tests {
         assert!(!wants_air("met-no"));
         assert!(wants_air("open-meteo"));
         assert!(wants_air("banana"));
+    }
+
+    #[test]
+    fn pick_samples_appends_hours_for_open_meteo_only() {
+        let mut b = sample_body();
+        b["current"]["time"] = json!("2026-06-14T07:45");
+        b["hourly"] = json!({
+            "time": ["2026-06-14T07:00", "2026-06-14T08:00"],
+            "temperature_2m": [12.0, 13.0],
+            "weather_code": [3, 61],
+            "is_day": [1, 1]
+        });
+        let om = pick_samples("open-meteo", &b, "C", 1, 0);
+        assert!(find(&om, "weather.hour.0.time").is_some());
+        assert!(find(&om, "weather.hour.1.temp").is_some());
+        // The same body through met.no's mapper is the wrong shape and stays empty.
+        assert!(pick_samples("met-no", &b, "C", 1, 0).is_empty());
     }
 
     #[test]

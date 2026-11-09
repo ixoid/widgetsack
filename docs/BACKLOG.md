@@ -43,6 +43,50 @@ or it is blind.
 
 ## LOW / Cosmetic
 
+### [qa] Forecast widget: a stale per-field hour value can pair with a fresh `time`
+- **Severity:** LOW
+- **File:** `client/src/lib/core/fork/weatherForecast.ts` (`pickHours`), `client/src/lib/widgets/fork/weather/WeatherForecast.tsx`
+- **Found by:** security+QA review (run W-3-20261109-0657, Q-L1)
+- **Feature:** W-3 forecast widget
+- **Date:** 2026-11-09
+- **Status:** open
+- **Description:** the prefix rule discards stale hour tails, but the hub never retracts single ids: if a later poll omits `weather.hour.N.temp` (missing or NaN) while `hour.N.time` moves on, the cell shows the previous poll's temperature next to the new time. Exposure near zero on both providers (full arrays, `air_temperature` always present in the first 24 h).
+- **Fix:** accept a field only when its sample `tsMs` equals the `time` sample's `tsMs` (if `SensorState` exposes it), or emit explicit tombstones from the backend.
+- **Check:** a meter test feeding `hour.3.time` from poll B and `hour.3.temp` from poll A must render `—` for that cell.
+
+### [qa] Forecast widget: Open-Meteo `forecast_hours=24` + `forecast_days=7` only asserted on the URL
+- **Severity:** LOW
+- **File:** `widgetsack/src/weather.rs` (`open_meteo_url`), `widgetsack/src/fork/weather_hourly.rs`
+- **Found by:** security+QA review (run W-3-20261109-0657, Q-L7)
+- **Feature:** W-3 forecast widget
+- **Date:** 2026-11-09
+- **Status:** open
+- **Description:** the owner's network cannot reach Open-Meteo, so nobody has checked live that `daily` still has 7 entries and `hourly` starts at the current hour with `forecast_hours=24`. The mapper slices from `current.time`, so a wrong assumption fails safe (fewer or zero hours, never wrong ones).
+- **Fix:** one `curl` of the built URL from a network that reaches `api.open-meteo.com`; adjust the fixture if the shape differs.
+- **Check:** `daily.time` has 7 entries and `hourly.time[0]` equals `current.time` truncated to the hour.
+
+### [security] Forecast hours: the `i0` search walks the whole `hourly.time` array
+- **Severity:** LOW
+- **File:** `widgetsack/src/fork/weather_hourly.rs` (`open_meteo_hours`)
+- **Found by:** security+QA review (run W-3-20261109-0657, S-L1)
+- **Feature:** W-3 forecast widget
+- **Date:** 2026-11-09
+- **Status:** open
+- **Description:** the 24-hour cap limits emission, not the linear scan for the first entry `>= current.time`; a misbehaving response within the 8 MiB body cap costs one O(n) pass of O(1) `Value` lookups. Bounded by the body cap and the 10 s timeout, no allocation per element.
+- **Fix:** optional `.take(MAX_SCAN)` on the search.
+- **Check:** a 100 000-entry `hourly.time` fixture still yields 24 hours in well under a second.
+
+### [pipeline] route.mjs turns `backend` off for a visual feature that also adds Rust sensors
+- **Severity:** LOW
+- **File:** `scripts/pipeline/route.mjs` (`conditionFor.backend = !touchesVisual || touchesDataLayer`)
+- **Found by:** coordinator triage (run W-3-20261109-0657)
+- **Feature:** pipeline routing
+- **Date:** 2026-11-09
+- **Status:** open
+- **Description:** a full-stack widget whose Rust side only emits new sensor ids keeps `backend` on today only because `touchesDataLayer` was measured true; a Rust change with no data-model claim would silently lose its backend step.
+- **Fix:** add a `touchesNative` signal (radius hits `widgetsack/src/**`) that turns `backend` on; pin it in `route.test.ts` with a positive control and one mutation.
+- **Check:** `planRoute({touchesVisual:true, touchesNative:true})` → `steps.backend === true`.
+
 ### [qa] Camera: decoder-side unsupportedCodec and subscribe `unavailable` never recover without a remount
 - **Severity:** LOW
 - **File:** `client/src/lib/widgets/fork/camera/camera-session.ts:101-107,157`, `camera-model.ts:172-179`

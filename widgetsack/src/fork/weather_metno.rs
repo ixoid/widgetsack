@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use crate::fork::weather_hourly;
 use crate::sensors::SensorSample;
 
 /// met.no rejects a missing/generic User-Agent. Compile-time constant, no user data.
@@ -441,6 +442,58 @@ fn is_day_for(entries: &[Entry<'_>]) -> Option<f64> {
     })
 }
 
+/// `is_day` of `entries[at]` for the hourly strip: its own `next_1_hours` suffix, else the nearest
+/// suffixed `next_1_hours` within `IS_DAY_NEIGHBOUR_SECS` in EITHER direction (the strip has past
+/// neighbours, unlike `is_day_for`), a tie going to the earlier entry. Never guesses beyond that.
+fn hour_is_day(entries: &[Entry<'_>], secs: i64, own: Option<&str>) -> Option<f64> {
+    if let Some(f) = own.and_then(day_flag) {
+        return Some(f);
+    }
+    entries
+        .iter()
+        .filter_map(|e| Some((e.secs, e.sym1.and_then(day_flag)?)))
+        .filter(|(s, _)| (s - secs).abs() <= IS_DAY_NEIGHBOUR_SECS)
+        .min_by_key(|(s, _)| ((s - secs).abs(), *s))
+        .map(|(_, f)| f)
+}
+
+/// `weather.hour.N.*` (ADR-007): N = whole hours after the poll's UTC hour floor, 0..24. Whole-hour
+/// steps only, so a half-hour zone still lines up with the UTC series. The first entry wins a
+/// duplicate N, so unsorted or repeated input is safe. The code comes from `next_1_hours` only: the
+/// 6 h symbol would paint a six-hour summary onto one hour.
+fn hourly_samples(
+    entries: &[Entry<'_>],
+    ts_ms: u64,
+    utc_offset_secs: i64,
+    temp: impl Fn(f64) -> f64,
+    out: &mut Vec<SensorSample>,
+) {
+    let poll = (ts_ms / 1000) as i64;
+    let floor = poll - poll.rem_euclid(3600);
+    let mut slots: std::collections::BTreeMap<usize, &Entry<'_>> = Default::default();
+    for e in entries {
+        let delta = e.secs - floor;
+        if delta < 0 || delta % 3600 != 0 {
+            continue;
+        }
+        let n = (delta / 3600) as usize;
+        if n < weather_hourly::MAX_HOURS {
+            slots.entry(n).or_insert(e);
+        }
+    }
+    for (n, e) in slots {
+        weather_hourly::push_hour(
+            out,
+            n,
+            ts_ms,
+            &weather_hourly::local_minute_text(e.secs + utc_offset_secs),
+            e.temp().map(&temp),
+            e.sym1.and_then(symbol_to_wmo).map(f64::from),
+            hour_is_day(entries, e.secs, e.sym1),
+        );
+    }
+}
+
 /// Map a met.no compact body to `weather.*` samples. Pure. `unit_letter` is "C" or "F"; `ts_ms` is
 /// the poll time (also anchors "today"); `utc_offset_secs` is the zone used to cut days. A malformed
 /// body yields an empty Vec; a missing/non-finite field is skipped, never zero-filled.
@@ -494,6 +547,7 @@ pub fn metno_to_samples(
         scalar(&format!("weather.day.{i}.low"), day.low.map(temp));
         scalar(&format!("weather.day.{i}.code"), day.code.map(f64::from));
     }
+    hourly_samples(&entries, ts_ms, utc_offset_secs, temp, &mut out);
     out
 }
 
@@ -825,12 +879,14 @@ mod tests {
         ] {
             assert!(metno_to_samples(&b, "C", POLL_MS, 0).is_empty(), "{b}");
         }
-        // String where a number is expected: skipped, no zero fill; unit still rides along.
+        // String where a number is expected: skipped, no zero fill; unit and the hour's time (which
+        // needs no value) still ride along.
         let b = json!({ "properties": { "timeseries": [ { "time": "2026-11-07T15:00:00Z",
             "data": { "instant": { "details": { "air_temperature": "warm", "wind_speed": null } } } } ] } });
         let s = metno_to_samples(&b, "C", POLL_MS, 0);
-        assert_eq!(s.len(), 1);
+        assert_eq!(s.len(), 2);
         assert_eq!(val(&s, "weather.unit").unwrap(), "C");
+        assert_eq!(val(&s, "weather.hour.0.time").unwrap(), "2026-11-07T15:00");
     }
 
     #[test]
@@ -1072,6 +1128,143 @@ mod tests {
         assert!(val(&s, "weather.is_day").is_none());
         // Temperature is independent of the symbol.
         assert_eq!(num_of(&s, "weather.temp"), 4.0);
+    }
+
+    // ---- hourly strip (W-3, ADR-007) ----
+
+    fn hours(s: &[SensorSample]) -> Vec<Value> {
+        s.iter()
+            .filter(|x| x.sensor.starts_with("weather.hour."))
+            .map(|x| serde_json::to_value(x).unwrap())
+            .map(|mut v| {
+                // Poll time is irrelevant to the comparison.
+                v["tsMs"] = Value::Null;
+                v["ts_ms"] = Value::Null;
+                v
+            })
+            .collect()
+    }
+
+    #[test]
+    fn fixture_hours_start_at_the_current_local_hour() {
+        let s = metno_to_samples(&fixture(), "C", POLL_MS, MSK);
+        assert_eq!(val(&s, "weather.hour.0.time").unwrap(), "2026-11-07T18:00");
+        close(num_of(&s, "weather.hour.0.temp"), -0.1);
+        assert_eq!(num_of(&s, "weather.hour.0.code"), 3.0);
+        assert_eq!(val(&s, "weather.hour.23.time").unwrap(), "2026-11-08T17:00");
+        assert!(val(&s, "weather.hour.24.time").is_none());
+        let n = s
+            .iter()
+            .filter(|x| x.sensor.ends_with(".time") && x.sensor.starts_with("weather.hour."))
+            .count();
+        assert_eq!(n, 24);
+    }
+
+    #[test]
+    fn fixture_first_24_hours_carry_no_is_day() {
+        // Measured: all 24 hours are plain `cloudy` and no suffixed symbol lies within 3 h, so
+        // is_day stays unknown. Do not "fix" this by guessing; the client falls back to the day glyph.
+        let s = metno_to_samples(&fixture(), "C", POLL_MS, MSK);
+        assert!(
+            s.iter()
+                .all(|x| !x.sensor.ends_with(".is_day") || !x.sensor.starts_with("weather.hour."))
+        );
+    }
+
+    #[test]
+    fn a_mid_hour_poll_keeps_the_current_hour_and_the_next_hour_drops_the_past() {
+        let s = metno_to_samples(&fixture(), "C", POLL_MS + 25 * 60_000, MSK);
+        assert_eq!(val(&s, "weather.hour.0.time").unwrap(), "2026-11-07T18:00");
+        let s = metno_to_samples(&fixture(), "C", POLL_MS + 3_600_000, MSK);
+        assert_eq!(val(&s, "weather.hour.0.time").unwrap(), "2026-11-07T19:00");
+    }
+
+    #[test]
+    fn hour_temperatures_follow_the_unit_and_time_follows_the_offset() {
+        let s = metno_to_samples(&fixture(), "F", POLL_MS, 0);
+        close(num_of(&s, "weather.hour.0.temp"), -0.1 * 9.0 / 5.0 + 32.0);
+        assert_eq!(val(&s, "weather.hour.0.time").unwrap(), "2026-11-07T15:00");
+    }
+
+    #[test]
+    fn hour_is_day_uses_own_suffix_then_the_nearest_suffixed_neighbour() {
+        let pts: Vec<(i64, f64, &str)> = (0..=9)
+            .map(|h| {
+                let sym = match h {
+                    0 => "clearsky_night",
+                    5 => "fair_day",
+                    _ => "cloudy",
+                };
+                (h, h as f64, sym)
+            })
+            .collect();
+        let ts = (days_from_civil(2026, 11, 7) * 86_400) as u64 * 1000;
+        let s = metno_to_samples(&body_at(&pts), "C", ts, 0);
+        let day =
+            |n: usize| val(&s, &format!("weather.hour.{n}.is_day")).map(|v| v.as_f64().unwrap());
+        assert_eq!(day(0), Some(0.0));
+        assert_eq!(day(1), Some(0.0)); // night neighbour 1 h behind
+        assert_eq!(day(2), Some(0.0)); // 2 h to the night entry, 3 h to the day one
+        assert_eq!(day(3), Some(1.0)); // 3 h behind vs 2 h ahead
+        assert_eq!(day(5), Some(1.0));
+        assert_eq!(day(8), Some(1.0)); // exactly 3 h behind
+        assert_eq!(day(9), None); // 4 h from the nearest suffix
+        assert_eq!(num_of(&s, "weather.hour.0.code"), 0.0);
+        assert_eq!(num_of(&s, "weather.hour.1.code"), 3.0);
+    }
+
+    #[test]
+    fn a_neighbour_tie_goes_to_the_earlier_entry() {
+        let ts = (days_from_civil(2026, 11, 7) * 86_400) as u64 * 1000;
+        let b = body_at(&[
+            (0, 1.0, "fair_day"),
+            (1, 1.0, "cloudy"),
+            (2, 1.0, "fair_night"),
+        ]);
+        let s = metno_to_samples(&b, "C", ts, 0);
+        assert_eq!(num_of(&s, "weather.hour.1.is_day"), 1.0);
+    }
+
+    #[test]
+    fn unsorted_and_duplicate_entries_give_the_same_hours() {
+        let ts = (days_from_civil(2026, 11, 7) * 86_400) as u64 * 1000;
+        let pts = [
+            (0, 1.0, "clearsky_night"),
+            (1, 2.0, "cloudy"),
+            (2, 3.0, "cloudy"),
+            (3, 4.0, "fair_day"),
+        ];
+        let sorted = metno_to_samples(&body_at(&pts), "C", ts, 0);
+        // Reversed, with a later duplicate of hour 1 that must lose to the first one seen.
+        let mut shuffled = pts.to_vec();
+        shuffled.reverse();
+        shuffled.push((1, 99.0, "rain"));
+        let other = metno_to_samples(&body_at(&shuffled), "C", ts, 0);
+        assert_eq!(hours(&sorted), hours(&other));
+        assert_eq!(hours(&sorted).len(), 16); // 4 hours x (time, temp, code, is_day)
+    }
+
+    #[test]
+    fn entries_without_next_1_hours_keep_time_and_temp_only() {
+        let ts = (days_from_civil(2026, 11, 7) * 86_400) as u64 * 1000;
+        let mut b = body_at(&[(0, 1.0, "cloudy"), (1, 2.0, "cloudy")]);
+        b["properties"]["timeseries"][1]["data"]
+            .as_object_mut()
+            .unwrap()
+            .remove("next_1_hours");
+        let s = metno_to_samples(&b, "C", ts, 0);
+        assert!(val(&s, "weather.hour.1.time").is_some());
+        assert_eq!(num_of(&s, "weather.hour.1.temp"), 2.0);
+        assert!(val(&s, "weather.hour.1.code").is_none());
+        assert!(val(&s, "weather.hour.1.is_day").is_none());
+    }
+
+    #[test]
+    fn half_hour_zone_prints_the_true_civil_minute() {
+        let ts = (days_from_civil(2026, 11, 7) * 86_400) as u64 * 1000;
+        let b = body_at(&[(0, 1.0, "cloudy")]);
+        let s = metno_to_samples(&b, "C", ts, 19_800); // UTC+5:30
+        assert_eq!(val(&s, "weather.hour.0.time").unwrap(), "2026-11-07T05:30");
     }
 
     // ---- DayExtremes (W-2): today's high/low carried across polls ----
