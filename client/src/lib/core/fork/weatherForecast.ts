@@ -18,6 +18,12 @@ const clampInt = (v: unknown, lo: number, hi: number, fallback: number): number 
 export const hourCount = (v: unknown): number => clampInt(v, 0, 24, 12);
 export const dayCount = (v: unknown): number => clampInt(v, 1, 7, 5);
 
+/** Multiplier for the secondary sizes (`--wf-scale`); 1 = the mock-up. Owner request 2026-11-09:
+ * the forecast digits were too small while the headline temperature was fine, so the headline is
+ * not scaled. Bounded so a typo cannot blow the card up or collapse it. */
+export const forecastScale = (v: unknown): number =>
+	typeof v === 'number' && Number.isFinite(v) ? Math.max(1, Math.min(2.5, v)) : 1;
+
 /** The `sensors` map the plugin meta hands to WidgetHost. `rise`/`set` are always subscribed: the
  * client cannot tell which provider is active, and on met.no those ids simply never arrive. */
 export function forecastSensors(config: Record<string, unknown>): Record<string, string> {

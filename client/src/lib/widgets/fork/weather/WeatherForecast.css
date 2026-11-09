@@ -1,8 +1,10 @@
 /* Forecast (fork, W-3) — current block, hourly strip, day rows. Tokens only (--np-fg / --np-label /
-   --np-accent), plus the one hairline literal from the mock-up. --wf-accent overrides the accent. */
+   --np-accent), plus the one hairline literal from the mock-up. --wf-accent overrides the accent;
+   --wf-scale (1 = mock-up size) multiplies every secondary size — the big temperature and its icon
+   stay fixed: the owner asked for larger forecast digits, not a larger headline. */
 .np-weatherforecast {
 	display: grid;
-	gap: 10px;
+	gap: calc(var(--wf-scale, 1) * 10px);
 	align-content: start;
 	width: 100%;
 	height: 100%;
@@ -34,13 +36,13 @@
 	line-height: 0.95;
 }
 .wf-c {
-	font-size: 14px;
+	font-size: calc(var(--wf-scale, 1) * 14px);
 	color: var(--np-label, rgba(255, 255, 255, 0.65));
 }
 .wf-d {
 	text-align: right;
-	font-size: 14px;
-	line-height: 18px;
+	font-size: calc(var(--wf-scale, 1) * 14px);
+	line-height: calc(var(--wf-scale, 1) * 18px);
 	color: var(--np-label, rgba(255, 255, 255, 0.65));
 }
 .wf-d b {
@@ -51,43 +53,45 @@
 .wf-hours {
 	display: grid;
 	grid-template-columns: repeat(var(--wf-cols, 12), minmax(0, 1fr));
-	padding: 6px 0;
+	padding: calc(var(--wf-scale, 1) * 6px) 0;
 	border-top: 1px solid rgba(255, 255, 255, 0.09);
 	border-bottom: 1px solid rgba(255, 255, 255, 0.09);
 }
 .wf-h {
 	display: grid;
 	justify-items: center;
-	gap: 2px;
+	gap: calc(var(--wf-scale, 1) * 2px);
 	min-width: 0;
 	overflow: hidden;
-	font-size: 11px;
+	font-size: calc(var(--wf-scale, 1) * 11px);
 }
 .wf-hh {
-	font-size: 11px;
+	font-size: calc(var(--wf-scale, 1) * 11px);
 	color: var(--np-label, rgba(255, 255, 255, 0.65));
 }
 .wf-h.now .wf-hh {
 	color: var(--wf-accent, var(--np-accent, rgb(0, 200, 255)));
 }
 .wf-hi-ico {
-	font-size: 15px;
+	font-size: calc(var(--wf-scale, 1) * 15px);
 	line-height: 1;
 }
 .wf-ht {
-	font-size: 12px;
+	font-size: calc(var(--wf-scale, 1) * 12px);
 	font-weight: 600;
 }
 
 .wf-head,
 .wf-day {
 	display: grid;
-	grid-template-columns: 1fr 26px 44px 44px;
+	grid-template-columns: 1fr calc(var(--wf-scale, 1) * 26px) calc(var(--wf-scale, 1) * 44px) calc(
+			var(--wf-scale, 1) * 44px
+		);
 	align-items: center;
-	gap: 8px;
+	gap: calc(var(--wf-scale, 1) * 8px);
 }
 .wf-head {
-	font-size: 10px;
+	font-size: calc(var(--wf-scale, 1) * 10px);
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	opacity: 0.8;
@@ -99,31 +103,31 @@
 	text-align: right;
 }
 .wf-day {
-	font-size: 13px;
-	line-height: 20px;
-	padding: 3px 0;
+	font-size: calc(var(--wf-scale, 1) * 13px);
+	line-height: calc(var(--wf-scale, 1) * 20px);
+	padding: calc(var(--wf-scale, 1) * 3px) 0;
 	border-top: 1px solid rgba(255, 255, 255, 0.09);
 }
 .wf-dn b {
 	font-weight: 600;
 }
 .wf-dn small {
-	font-size: 12px;
+	font-size: calc(var(--wf-scale, 1) * 12px);
 	color: var(--np-label, rgba(255, 255, 255, 0.65));
 }
 .wf-day.today .wf-dn b {
 	color: var(--wf-accent, var(--np-accent, rgb(0, 200, 255)));
 }
 .wf-di {
-	font-size: 18px;
+	font-size: calc(var(--wf-scale, 1) * 18px);
 	line-height: 1;
 }
 .wf-hi {
-	font-size: 15px;
+	font-size: calc(var(--wf-scale, 1) * 15px);
 	font-weight: 700;
 	color: var(--np-fg, rgb(255, 255, 255));
 }
 .wf-lo {
-	font-size: 15px;
+	font-size: calc(var(--wf-scale, 1) * 15px);
 	color: var(--np-label, rgba(255, 255, 255, 0.65));
 }

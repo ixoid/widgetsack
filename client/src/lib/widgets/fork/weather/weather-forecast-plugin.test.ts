@@ -16,10 +16,23 @@ describe('weatherforecast plugin', () => {
 			hours: 12,
 			locale: 'ru',
 			showCurrent: true,
-			showDetail: true
+			showDetail: true,
+			scale: 1
 		});
 		const keys = (meta?.configFields ?? []).map((f) => f.key);
-		expect(keys).toEqual(['days', 'hours', 'locale', 'showCurrent', 'showDetail', 'color']);
+		expect(keys).toEqual([
+			'days',
+			'hours',
+			'locale',
+			'showCurrent',
+			'showDetail',
+			'scale',
+			'color'
+		]);
+		const scale = meta?.configFields?.find((f) => f.key === 'scale');
+		expect(scale && scale.kind === 'number' && [scale.min, scale.max, scale.step]).toEqual([
+			1, 2.5, 0.1
+		]);
 		expect((meta?.configFields ?? []).every((f) => f.help)).toBe(true);
 		const locale = meta?.configFields?.find((f) => f.key === 'locale');
 		expect(locale && locale.kind === 'select' && locale.options).toEqual(['ru', 'en']);

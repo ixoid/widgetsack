@@ -973,4 +973,5 @@ Current weather, a strip of the next hours and the coming days with high / low, 
 | `locale` | select | "ru" | `ru`, `en` | language of the condition, weekday and month labels |
 | `showCurrent` | toggle | true |  | show the big current temperature with its condition |
 | `showDetail` | toggle | true |  | show the feels-like, humidity and wind column beside the temperature |
+| `scale` | number | 1 | min 1, max 2.5, step 0.1 | multiplier for the hour strip, day rows and detail text (1 = default; the big temperature stays as is — widen the widget for the strip) |
 | `color` | color |  |  | current-hour and today colour (blank = theme accent) |
