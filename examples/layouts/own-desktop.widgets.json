@@ -14,8 +14,8 @@
             "rect": {
               "h": 89.43208819929038,
               "w": 216,
-              "x": 456,
-              "y": 144
+              "x": 8,
+              "y": 432.000014617934
             },
             "type": "clock"
           }
@@ -31,8 +31,8 @@
             "rect": {
               "h": 112.00001461793396,
               "w": 256,
-              "x": 456,
-              "y": 24
+              "x": 8,
+              "y": 320
             },
             "type": "clock"
           }
@@ -69,8 +69,8 @@
             "config": {
               "h": 440,
               "w": 496,
-              "x": 448,
-              "y": 248
+              "x": 856,
+              "y": 288
             },
             "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.45); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
             "id": "card-agenda",
@@ -102,10 +102,10 @@
             },
             "id": "ticker-3hpjgi",
             "rect": {
-              "h": 110,
+              "h": 88,
               "w": 136,
-              "x": 2336,
-              "y": 568
+              "x": 208,
+              "y": 536
             },
             "type": "ticker"
           }
@@ -118,10 +118,10 @@
             },
             "id": "disks-xniuu6",
             "rect": {
-              "h": 80,
+              "h": 96,
               "w": 328,
-              "x": 24,
-              "y": 480
+              "x": 2160,
+              "y": 560
             },
             "type": "disks"
           }
@@ -137,10 +137,10 @@
             },
             "id": "servercheck-main",
             "rect": {
-              "h": 140,
+              "h": 96,
               "w": 328,
-              "x": 24,
-              "y": 570
+              "x": 0,
+              "y": 624
             },
             "type": "servercheck"
           }
@@ -159,8 +159,8 @@
             "rect": {
               "h": 95,
               "w": 104,
-              "x": 2216,
-              "y": 568
+              "x": 104,
+              "y": 529
             },
             "type": "ticker"
           }
@@ -179,8 +179,8 @@
             "rect": {
               "h": 94,
               "w": 104,
-              "x": 2112,
-              "y": 569
+              "x": 0,
+              "y": 529
             },
             "type": "ticker"
           }
@@ -198,9 +198,159 @@
               "h": 448,
               "w": 624,
               "x": 1472,
-              "y": 256
+              "y": 16
             },
             "type": "camera"
+          }
+        },
+        {
+          "id": "weatherforecast-quvnaq",
+          "unit": {
+            "config": {
+              "days": 5,
+              "hours": 12,
+              "locale": "ru",
+              "showCurrent": true,
+              "showDetail": true
+            },
+            "id": "weatherforecast-quvnaq",
+            "rect": {
+              "h": 288,
+              "w": 360,
+              "x": 336,
+              "y": 48
+            },
+            "type": "weatherforecast"
+          }
+        },
+        {
+          "id": "card-system",
+          "unit": {
+            "child": {
+              "children": [
+                {
+                  "basis": 22,
+                  "id": "uptime-slot",
+                  "unit": {
+                    "config": {
+                      "format": "duration",
+                      "label": "Uptime"
+                    },
+                    "id": "uptime",
+                    "rect": {
+                      "h": 22,
+                      "w": 312,
+                      "x": 0,
+                      "y": 0
+                    },
+                    "sensor": "host.uptime",
+                    "type": "text"
+                  }
+                },
+                {
+                  "basis": 28,
+                  "id": "net-down-slot",
+                  "unit": {
+                    "config": {
+                      "format": "rate",
+                      "label": "↓ Download",
+                      "showSparkline": true,
+                      "sparklineSeconds": 120,
+                      "sparklineStretch": true
+                    },
+                    "id": "net-down",
+                    "rect": {
+                      "h": 28,
+                      "w": 312,
+                      "x": 0,
+                      "y": 0
+                    },
+                    "sensor": "net.down",
+                    "type": "text"
+                  }
+                },
+                {
+                  "basis": 28,
+                  "id": "net-up-slot",
+                  "unit": {
+                    "config": {
+                      "format": "rate",
+                      "label": "↑ Upload",
+                      "showSparkline": true,
+                      "sparklineSeconds": 120,
+                      "sparklineStretch": true
+                    },
+                    "id": "net-up",
+                    "rect": {
+                      "h": 28,
+                      "w": 312,
+                      "x": 0,
+                      "y": 0
+                    },
+                    "sensor": "net.up",
+                    "type": "text"
+                  }
+                },
+                {
+                  "basis": 20,
+                  "id": "net-totals-slot",
+                  "unit": {
+                    "config": {
+                      "label": "",
+                      "value": "Received {bytes(net.down.total)} · Sent {bytes(net.up.total)}"
+                    },
+                    "css": "font-size: var(--np-text-caption); color: var(--np-label);",
+                    "id": "net-totals",
+                    "rect": {
+                      "h": 20,
+                      "w": 312,
+                      "x": 0,
+                      "y": 0
+                    },
+                    "sensor": "net.down.total",
+                    "type": "text"
+                  }
+                },
+                {
+                  "basis": 20,
+                  "id": "net-adapter-slot",
+                  "unit": {
+                    "config": {
+                      "label": "",
+                      "value": "{net.adapter} · link {rate(net.linkspeed.rx / 8)}"
+                    },
+                    "css": "font-size: var(--np-text-caption); color: var(--np-label);",
+                    "id": "net-adapter",
+                    "rect": {
+                      "h": 20,
+                      "w": 312,
+                      "x": 0,
+                      "y": 0
+                    },
+                    "sensor": "net.linkspeed.rx",
+                    "type": "text"
+                  }
+                }
+              ],
+              "gap": 10,
+              "id": "card-system-root",
+              "kind": "col",
+              "pad": 16
+            },
+            "config": {
+              "h": 181,
+              "w": 340,
+              "x": 1536,
+              "y": 528
+            },
+            "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.5); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
+            "id": "card-system",
+            "kind": "group",
+            "name": "Uptime & network",
+            "size": {
+              "h": 196,
+              "w": 340
+            }
           }
         }
       ],
@@ -210,174 +360,7 @@
           {
             "align": "stretch",
             "basis": 340,
-            "children": [
-              {
-                "id": "card-weather",
-                "unit": {
-                  "child": {
-                    "children": [
-                      {
-                        "basis": 280,
-                        "id": "forecast-slot",
-                        "unit": {
-                          "config": {
-                            "days": 5,
-                            "hours": 12,
-                            "locale": "ru",
-                            "showCurrent": true,
-                            "showDetail": true
-                          },
-                          "id": "forecast",
-                          "rect": {
-                            "h": 280,
-                            "w": 312,
-                            "x": 0,
-                            "y": 0
-                          },
-                          "type": "weatherforecast"
-                        }
-                      }
-                    ],
-                    "gap": 4,
-                    "id": "card-weather-root",
-                    "kind": "col",
-                    "pad": 14
-                  },
-                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.5); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
-                  "id": "card-weather",
-                  "kind": "group",
-                  "name": "Weather",
-                  "size": {
-                    "h": 308,
-                    "w": 340
-                  }
-                }
-              },
-              {
-                "id": "card-system",
-                "unit": {
-                  "child": {
-                    "children": [
-                      {
-                        "basis": 22,
-                        "id": "uptime-slot",
-                        "unit": {
-                          "config": {
-                            "format": "duration",
-                            "label": "Uptime"
-                          },
-                          "id": "uptime",
-                          "rect": {
-                            "h": 22,
-                            "w": 312,
-                            "x": 0,
-                            "y": 0
-                          },
-                          "sensor": "host.uptime",
-                          "type": "text"
-                        }
-                      },
-                      {
-                        "basis": 28,
-                        "id": "net-down-slot",
-                        "unit": {
-                          "config": {
-                            "format": "rate",
-                            "label": "↓ Download",
-                            "showSparkline": true,
-                            "sparklineSeconds": 120,
-                            "sparklineStretch": true
-                          },
-                          "id": "net-down",
-                          "rect": {
-                            "h": 28,
-                            "w": 312,
-                            "x": 0,
-                            "y": 0
-                          },
-                          "sensor": "net.down",
-                          "type": "text"
-                        }
-                      },
-                      {
-                        "basis": 28,
-                        "id": "net-up-slot",
-                        "unit": {
-                          "config": {
-                            "format": "rate",
-                            "label": "↑ Upload",
-                            "showSparkline": true,
-                            "sparklineSeconds": 120,
-                            "sparklineStretch": true
-                          },
-                          "id": "net-up",
-                          "rect": {
-                            "h": 28,
-                            "w": 312,
-                            "x": 0,
-                            "y": 0
-                          },
-                          "sensor": "net.up",
-                          "type": "text"
-                        }
-                      },
-                      {
-                        "basis": 20,
-                        "id": "net-totals-slot",
-                        "unit": {
-                          "config": {
-                            "label": "",
-                            "value": "Received {bytes(net.down.total)} · Sent {bytes(net.up.total)}"
-                          },
-                          "css": "font-size: var(--np-text-caption); color: var(--np-label);",
-                          "id": "net-totals",
-                          "rect": {
-                            "h": 20,
-                            "w": 312,
-                            "x": 0,
-                            "y": 0
-                          },
-                          "sensor": "net.down.total",
-                          "type": "text"
-                        }
-                      },
-                      {
-                        "basis": 20,
-                        "id": "net-adapter-slot",
-                        "unit": {
-                          "config": {
-                            "label": "",
-                            "value": "{net.adapter} · link {rate(net.linkspeed.rx / 8)}"
-                          },
-                          "css": "font-size: var(--np-text-caption); color: var(--np-label);",
-                          "id": "net-adapter",
-                          "rect": {
-                            "h": 20,
-                            "w": 312,
-                            "x": 0,
-                            "y": 0
-                          },
-                          "sensor": "net.linkspeed.rx",
-                          "type": "text"
-                        }
-                      }
-                    ],
-                    "gap": 10,
-                    "id": "card-system-root",
-                    "kind": "col",
-                    "pad": 16
-                  },
-                  "css": "&[data-group=\"\"] { background: rgba(16, 22, 32, 0.5); border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }",
-                  "id": "card-system",
-                  "kind": "group",
-                  "name": "Uptime & network",
-                  "size": {
-                    "h": 196,
-                    "w": 340
-                  }
-                }
-              }
-            ],
+            "children": [],
             "gap": 24,
             "id": "col-left",
             "kind": "col"
