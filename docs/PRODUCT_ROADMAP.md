@@ -22,7 +22,7 @@
 ```
 /feature A fork widget `weatherforecast` in client/src/lib/widgets/fork/weather/ that reproduces the owner's Rainmeter ASTROWeather panel: (a) day rows — one row per day (today + N), each with a localised day name and date (ru: «Сегодня», «Вс 8 ноя»; locale config like the clock widget), condition icon, HIGH and LOW as separate values (the stock `weather` meter only has English TODAY/SUN labels and no date); (b) an hourly strip — next 12 hours: hour, icon, temperature, fed by new `weather.hour.N.{time,temp,code}` sensors emitted by the provider mappers (met.no gives hourly data in the same response; Open-Meteo needs the `hourly=` query, bounded to 24 entries). Props-only meter, config: days, hours, locale, showCurrent; pure helpers with tests (hour bucketing, label formatting); register via a fork plugin; gen:docs. Interim: the stock weather widget is restyled into day rows via layout CSS (examples/layouts/own-desktop.widgets.json, 2026-11-07).
 ```
-**Priority:** Phase 2 · **Depends on:** W-1 · **Est. size/mode:** M · SPEC
+**Priority:** Phase 2 · **Depends on:** W-1 · **Est. size/mode:** M · SPEC · **Status:** ✅ done 2026-11-09 on `feat/W-3-weather-forecast` (run W-3-20261109-0657, route DATA, ADR-007 hourly sensors `weather.hour.N.{time,temp,code,is_day}` from both providers; owner approved the mock-up https://claude.ai/artifact/GeEQHNCp3uth4c2TnU9Wrg and chose the night moon for codes 0–2; security+QA APPROVED 0/0/0/9 LOW; runtime-eval APPROVED in real Chromium and live on the `--multi` overlay with met.no data; merge pending owner's word; layout note: the Weather card grows 236→308 px and pushes the System card into the floating Disks card — owner to rearrange)
 
 ## Vector T — Tickers (owner request 2026-11-07)
 
@@ -94,5 +94,5 @@
 3. W-2, K-1 and the LOW backlog items — done, in `main`.
 3a. T-1 — done, in `main` (2026-11-08).
 4. C-1 — done, in `main` (2026-11-08; native RTSP, no go2rtc, no CSP change).
-5. W-3 — the last open roadmap item. (Vector P / the clean-VM installer check was dropped by the owner 2026-11-08: «это вообще не нужно»; the packaging itself shipped with the stage-4 installer and release script.)
+5. W-3 — done 2026-11-09 on `feat/W-3-weather-forecast` (merge pending owner's word). The roadmap has no open items left. (Vector P / the clean-VM installer check was dropped by the owner 2026-11-08: «это вообще не нужно»; the packaging itself shipped with the stage-4 installer and release script.)
 6. N-1 — done 2026-11-08 on `feat/N-1-notifyfeed` (ADR-006, live probe GO, runtime-eval APPROVED; merge pending owner's word; real-game confirmation after the next release install).
