@@ -43,6 +43,17 @@ or it is blind.
 
 ## LOW / Cosmetic
 
+### [owner] Studio number fields cannot take a decimal point (upstream Inspector)
+- **Severity:** LOW
+- **File:** `client/src/lib/widgets/Inspector.tsx` (config-field `<input type="number">` around line 815), `MultiInspector.tsx:104-110`
+- **Found by:** owner (2026-11-09, «не печатает точку» on the Forecast `scale` field)
+- **Feature:** Studio inspector (upstream), hit by W-3 scale
+- **Date:** 2026-11-09
+- **Status:** open — worked around 2026-11-09: the Forecast `scale` field became a select of numeric strings (`weather-forecast-plugin.ts`), `forecastScale()` parses them.
+- **Description:** the input is controlled with `value={cfgStr(config)}` and `onInput → Number(value)`; typing `1.` yields `Number('1.') = 1`, React writes `"1"` back and the dot is lost, so no decimal can ever be typed. The field's `min`/`max`/`step` are not passed to the input either (spinner steps by 1). No upstream number field uses decimals today, which is why it went unnoticed.
+- **Fix:** keep a local string draft while the input is focused (commit on blur / on a complete number) and pass `min`/`max`/`step` from the field; candidate for an upstream PR rather than a fork patch (core file).
+- **Check:** a `kind: 'number', step: 0.1` field accepts `1.4` typed character by character in Studio; `Inspector.configFields.test.tsx` gets a decimal case.
+
 ### [qa] Forecast widget: a stale per-field hour value can pair with a fresh `time`
 - **Severity:** LOW
 - **File:** `client/src/lib/core/fork/weatherForecast.ts` (`pickHours`), `client/src/lib/widgets/fork/weather/WeatherForecast.tsx`

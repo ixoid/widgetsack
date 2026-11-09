@@ -34,7 +34,8 @@ type Props = {
 	showCurrent?: boolean;
 	showDetail?: boolean;
 	color?: string;
-	scale?: number;
+	/** The Studio select hands a numeric string; a number comes from older layouts. */
+	scale?: number | string;
 };
 
 const scalar = (s?: SensorState): number | null =>

@@ -30,8 +30,15 @@ describe('weatherforecast plugin', () => {
 			'color'
 		]);
 		const scale = meta?.configFields?.find((f) => f.key === 'scale');
-		expect(scale && scale.kind === 'number' && [scale.min, scale.max, scale.step]).toEqual([
-			1, 2.5, 0.1
+		expect(scale && scale.kind === 'select' && scale.options).toEqual([
+			'1',
+			'1.2',
+			'1.4',
+			'1.6',
+			'1.8',
+			'2',
+			'2.2',
+			'2.5'
 		]);
 		expect((meta?.configFields ?? []).every((f) => f.help)).toBe(true);
 		const locale = meta?.configFields?.find((f) => f.key === 'locale');

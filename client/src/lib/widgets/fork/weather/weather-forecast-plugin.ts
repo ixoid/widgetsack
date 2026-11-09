@@ -79,14 +79,15 @@ export const registerWeatherForecastPlugin = (): void =>
 							help: 'show the feels-like, humidity and wind column beside the temperature'
 						},
 						{
+							// A select, not a number field: the stock Inspector's controlled number input
+							// re-renders Number(value) on every keystroke, so a decimal point cannot be typed
+							// (BACKLOG, upstream). String options; forecastScale() parses them.
 							key: 'scale',
 							label: 'text size',
-							kind: 'number',
-							min: 1,
-							max: 2.5,
-							step: 0.1,
+							kind: 'select',
+							options: ['1', '1.2', '1.4', '1.6', '1.8', '2', '2.2', '2.5'],
 							group: 'Appearance',
-							help: 'multiplier for the hour strip, day rows and detail text (1 = default; the big temperature stays as is — widen the widget for the strip)'
+							help: 'multiplier for the hour strip, day rows and detail text (1 = default; the big temperature stays as is — widen the widget or lower hours for the strip)'
 						},
 						{
 							key: 'color',

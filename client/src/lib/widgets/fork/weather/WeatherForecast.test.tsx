@@ -198,6 +198,11 @@ describe('WeatherForecast meter', () => {
 		expect((big.container.firstChild as HTMLElement).style.getPropertyValue('--wf-scale')).toBe(
 			'1.4'
 		);
+		// What the Studio select actually stores.
+		const str = render(<WeatherForecast sensors={base} scale="2" />);
+		expect((str.container.firstChild as HTMLElement).style.getPropertyValue('--wf-scale')).toBe(
+			'2'
+		);
 		const junk = render(<WeatherForecast sensors={base} scale={NaN} />);
 		expect((junk.container.firstChild as HTMLElement).style.getPropertyValue('--wf-scale')).toBe(
 			''

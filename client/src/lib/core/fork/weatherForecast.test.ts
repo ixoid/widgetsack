@@ -54,7 +54,10 @@ describe('forecastScale (secondary text multiplier)', () => {
 		expect([1, 1.3, 2.5].map(forecastScale)).toEqual([1, 1.3, 2.5]);
 		expect([0, 0.5, -2].map(forecastScale)).toEqual([1, 1, 1]);
 		expect(forecastScale(9)).toBe(2.5);
-		for (const bad of [null, undefined, NaN, '1.5', Infinity]) expect(forecastScale(bad)).toBe(1);
+		// The Studio select stores strings; a blank or non-numeric string is junk.
+		expect(['1.4', '2.5', '9'].map(forecastScale)).toEqual([1.4, 2.5, 2.5]);
+		for (const bad of [null, undefined, NaN, '', ' ', 'big', Infinity])
+			expect(forecastScale(bad)).toBe(1);
 	});
 });
 
