@@ -554,29 +554,6 @@
                           },
                           {
                             "basis": 100,
-                            "id": "cpu-clock-slot",
-                            "unit": {
-                              "config": {
-                                "label": "MHz",
-                                "max": 5800,
-                                "min": 0,
-                                "style": "arc",
-                                "sweep": 270,
-                                "unit": ""
-                              },
-                              "id": "cpu-clock",
-                              "rect": {
-                                "h": 100,
-                                "w": 100,
-                                "x": 0,
-                                "y": 0
-                              },
-                              "sensor": "hw.cpu.clock.max",
-                              "type": "gauge"
-                            }
-                          },
-                          {
-                            "basis": 100,
                             "id": "cpu-temp-slot",
                             "unit": {
                               "config": {
@@ -595,6 +572,29 @@
                                 "y": 0
                               },
                               "sensor": "hw.cpu.temp",
+                              "type": "gauge"
+                            }
+                          },
+                          {
+                            "basis": 100,
+                            "id": "cpu-clock-slot",
+                            "unit": {
+                              "config": {
+                                "label": "MHz",
+                                "max": 5800,
+                                "min": 0,
+                                "style": "arc",
+                                "sweep": 270,
+                                "unit": ""
+                              },
+                              "id": "cpu-clock",
+                              "rect": {
+                                "h": 100,
+                                "w": 100,
+                                "x": 0,
+                                "y": 0
+                              },
+                              "sensor": "hw.cpu.clock.max",
                               "type": "gauge"
                             }
                           }
